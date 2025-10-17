@@ -1,7 +1,15 @@
 .Rproj.user
 .Rhistory
-.RData
 .Ruserdata
 *.tar
 *.gz
 *.html
+*.lookup
+papers/*
+*.fastq
+*.1
+de Faria/snRNA/data/.~lock.paper_info.xlsx#
+*.idx
+de Faria/snRNA/scripts/snrna.data
+.RData
+.RDataTmp

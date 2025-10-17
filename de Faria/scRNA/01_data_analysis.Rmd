@@ -26,7 +26,7 @@ Patient age: 36 months
 Note: All of Jessa et. al. samples come from C19MC amplified-tumors as well
 
 ```{r, warning=FALSE}
-path <- paste0(here::here(), "/de Faria/input/scRNA/")
+path <- paste0(here::here(), "/de Faria/scRNA/")
 # list.files(path)
 
 h072.data <- Read10X(path)
