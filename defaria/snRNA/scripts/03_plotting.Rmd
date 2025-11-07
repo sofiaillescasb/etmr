@@ -1,0 +1,198 @@
+---
+title: "Plotting snRNA-seq de Faria data"
+output: html_notebook
+---
+
+## Reading data
+
+The goal of this project is to analyze single cell data from a paper. We'll use nine fixed tumor samples from de Faria et al (<https://www.nature.com/articles/s41467-022-30626-8>). The data is available in GEO (GSE186144). The data is snRNA-seq.
+
+Tumors:
+
+-   KK22-H-225 Human ETMR tumor C19MC amplified
+-   KK22-H-226 Human ETMR tumor C19MC amplified
+-   KK22-H-227 Dicer mutation
+-   KK23-H-507 Human ETMR tumor C19MC amplified
+-   KK23-H-508 Human ETMR tumor C19MC amplified
+-   KK23-H-509 Human ETMR tumor C19MC amplified
+-   KK23-H-510 Human ETMR tumor C19MC amplified
+-   KK23-H-511 Human ETMR tumor C19MC amplified
+-   KK23-H-512 Human ETMR tumor C19MC amplified
+
+Healthy samples came from the brains of aborted children. The data was published by Braun et. al. <https://www.science.org/doi/10.1126/science.adf1226#sec-8>
+
+The datasets were integrated with the scanpy **ingest** method
+
+```{r, include=FALSE}
+
+
+py_require(c("anndata"))
+#convert = TRUE Tto turn python objects into native R objects
+ad <- import("anndata", convert = TRUE)
+
+
+```
+
+```{r}
+
+etmr_ad <- ad$read_h5ad(paste0(here::here(), "/de Faria/snRNA/data/snrna_etmr_data_int.h5ad"))
+
+ref_ad <- ad$read_h5ad(paste0(here::here(), "/de Faria/healthy/human_dev_cont_age_int.h5ad"))
+```
+
+```{r}
+
+convert_to_seurat <- function(adata) {
+  # Making data compatible with seurat
+counts <- Matrix::Matrix(t(adata$X), sparse = TRUE)
+meta <- adata$obs
+
+# Make sure cell names match
+cell_names <- rownames(meta)
+colnames(counts) <- cell_names
+
+# Create Seurat object
+seurat_obj <- CreateSeuratObject(
+  counts = counts,
+  meta.data = meta,
+  )
+
+
+umap <- py_to_r(adata$obsm$X_umap)
+
+rownames(umap) <- rownames(adata$X)
+colnames(umap) <- c("UMAP1", "UMAP2")
+
+seurat_obj[["umap"]] <- CreateDimReducObject(
+  embeddings = umap,
+  key = "UMAP_",
+  assay = DefaultAssay(seurat_obj)
+)
+return(seurat_obj)
+}
+
+```
+
+```{r}
+#Warning: Data is of class dgRMatrix. Coercing to dgCMatrix. I don't know what to do about that
+ref_data <- convert_to_seurat(ref_ad)
+etmr <- convert_to_seurat(etmr_ad)
+
+```
+
+## Plotting
+
+### Merging Seurat objects
+
+```{r merge_seurat_objects}
+all_data <- merge(ref_data, etmr, add.cell.ids=c("healthy" ,"etmr"), project = "defaria")
+
+```
+
+```{r combined_umap}
+
+#Making combined umap dataframe for plotting
+
+umap1 <- Embeddings(etmr, "umap")
+umap2 <- Embeddings(ref_data, "umap")
+
+meta1 <- etmr@meta.data
+meta2 <- ref_data@meta.data %>% select(-orig.ident
+) %>% rename(orig.ident
+= donor_id)
+
+com_cols <- intersect(colnames(meta1), colnames(meta2))
+
+
+colnames(meta1[, com_cols])
+colnames(meta2[, com_cols])
+
+# Combine
+combined_umap <- rbind(
+  cbind(umap1, meta1[, com_cols]),
+  cbind(umap2, meta2[, com_cols])
+)
+
+
+combined_umap$dataset <- c(rep("etmr", nrow(umap1)), rep("ref", nrow(umap2)))
+
+#Fixing levels and names in umap dataframe, probably not necessary
+combined_umap <- combined_umap %>%
+  mutate(dataset = ordered(dataset, c("ref", "etmr"))) %>%
+  rename(Condition = dataset) %>%
+  mutate(Age = as.numeric(as.character(Age)))
+
+#I think it's fine actually
+```
+
+```{r integrated_plot}
+
+#Making a plot that shows how the datasets integrated
+#Had to do separate layers for the geom because otherwise the plot showed ref_data on top, which covered the etmr cells
+#Seurat method can be done like this: DimPlot(ref_data, reduction = "umap", label = FALSE, group.by = "donor_id"), but it returns a patchwork and I couldn't manipulate it later
+
+int_plot <- ggplot() +
+   geom_point(data = combined_umap %>% filter(Condition == "ref"),
+             aes(x = UMAP_1, y = UMAP_2, color = Condition),
+             alpha = 0.5, size = 0.5) +
+  geom_point(data = combined_umap %>% filter(Condition == "etmr"),
+             aes(x = UMAP_1, y = UMAP_2, color = Condition),
+             alpha = 1, size = 0.5) +
+  scale_color_manual(values = c("grey", "#C77CFF")) +
+  theme_classic() +
+  guides(colour = guide_legend(override.aes = list(size=3)))
+
+
+
+```
+
+```{r}
+
+
+all_cell_plot <- ggplot() +
+   geom_point(data = combined_umap %>% filter(Condition == "ref"),
+             aes(x = UMAP_1, y = UMAP_2, color = CellClass),
+             alpha = 0.5, size = 0.5) +
+  geom_point(data = combined_umap %>% filter(Condition == "etmr"),
+             aes(x = UMAP_1, y = UMAP_2, color = CellClass),
+             alpha = 1, size = 0.5) +
+  theme_classic() +
+  theme(legend.position = "none")
+
+etmr_cell_plot <- ggplot(combined_umap %>% filter(Condition == "etmr"), aes(x = UMAP_1, y = UMAP_2, color = CellClass)) +
+   geom_point(alpha = 0.5, size = 0.5) +
+  theme_classic() 
+
+
+cell_plot <- int_plot + all_cell_plot + etmr_cell_plot + plot_layout(guides = "collect")  + plot_annotation(title = "Cell type in healthy cells and ETMR snRNA data")
+  
+
+ggsave(paste0(here::here(),"/de Faria/snRNA/plots/cell_class.jpeg"), cell_plot, width = 12, height = 4, units = "in", dpi = 600)
+```
+
+```{r}
+
+
+all_age_plot <- ggplot() +
+   geom_point(data = combined_umap %>% filter(Condition == "ref"),
+             aes(x = UMAP_1, y = UMAP_2, color = Age),
+             alpha = 0.5, size = 0.5) +
+  geom_point(data = combined_umap %>% filter(Condition == "etmr"),
+             aes(x = UMAP_1, y = UMAP_2, color = Age),
+             alpha = 1, size = 0.5) +
+  scale_color_viridis() +
+  theme_classic() +
+  theme(legend.position = "none")
+
+
+etmr_age_plot <- ggplot(combined_umap %>% filter(Condition == "etmr"), aes(x = UMAP_1, y = UMAP_2, color = Age)) +
+   geom_point(alpha = 0.5, size = 0.5) +
+  scale_color_viridis() +
+  theme_classic() 
+
+
+age_plot <- int_plot + all_age_plot + etmr_age_plot + plot_layout(guides = "collect")  + plot_annotation(title = "Age in healthy cells and ETMR snRNA data")
+  
+
+ggsave(paste0(here::here(),"/de Faria/snRNA/plots/age.jpeg"), age_plot, width = 12, height = 4, units = "in", dpi = 600)
+```

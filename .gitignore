@@ -13,3 +13,12 @@ de Faria/snRNA/data/.~lock.paper_info.xlsx#
 de Faria/snRNA/scripts/snrna.data
 .RData
 .RDataTmp
+*.csv
+*.csv
+*.txt
+*.h5ad
+*.rds
+*.h5Seurat
+*.xlsx
+*.jpeg
+*.png
