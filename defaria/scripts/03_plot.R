@@ -39,7 +39,7 @@ all_meta <- all_data@meta.data
 
 
 print("Making UMAP for plotting...")
-all_umap <- cbind(Embeddings(all_data, "umap"), all_meta) %>%
+all_umap <- cbind(Embeddings(all_data, "umap"), all_meta)
   
 
 print("Plotting integration")
@@ -50,21 +50,45 @@ int_plot <- plot_both("condition") +
   theme_classic() +
   guides(colour = guide_legend(override.aes = list(size=3)))
 
-ggsave(paste0(dirname(dirname(dirname(as.character(args[1])))), "/plots/integration_plot.jpeg"), int_plot, width = 6, height = 3, units = "in", dpi = 600)
+ggsave("/home/sofia/Projects/etmr/defaria/scRNA/paper_data/plots/integration_plot.jpeg", int_plot, width = 6, height = 3, units = "in", dpi = 600)
+
+# ggsave(paste0(dirname(dirname(dirname(as.character(args[1])))), "/plots/integration_plot.jpeg"), int_plot, width = 6, height = 3, units = "in", dpi = 600)
 
 print("Plotting CellType")
 
 
 all_cell_plot <- plot_both("CellClass") +
+  scale_color_manual(values = c("#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea")) 
+
+
+ggsave("/home/sofia/Projects/etmr/defaria/scRNA/paper_data/plots/all_data_cell_class.jpeg", all_cell_plot, width = 6, height = 3, units = "in", dpi = 600)
+# ggsave(paste0(dirname(dirname(dirname(as.character(args[1])))), "/plots/all_data_cell_class.jpeg"), all_cell_plot, width = 6, height = 3, units = "in", dpi = 600)
+
+all_cell_hist <- ggplot(all_umap, aes(x = leiden, fill = CellClass)) +
   geom_bar(position = "fill",  color = "gray") +
-  scale_color_manual(values = c("#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea"))  +
-  theme(legend.position = "none")
+  scale_fill_manual(values = c("#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea"))  +
+  theme_classic() +
+  ggtitle("de Faria tumor cell type according to healthy reference")
+
+ggsave("/home/sofia/Projects/etmr/defaria/scRNA/paper_data/plots/all_cell_hist_ref.jpeg", all_cell_hist, width = 6, height = 3, units = "in", dpi = 600)
+
+
 
 etmr_cell_plot <- ggplot(all_umap %>% filter(condition == "etmr"), aes(x = UMAP_1, y = UMAP_2, color = CellClass)) +
-  geom_point(alpha = 0.5, size = 0.5) +
-  geom_bar(position = "fill",  color = "gray") +
+  geom_point(size = 0.6) +
   scale_color_manual(values = c("#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea"))  +
-  theme_classic() 
+  theme_classic() +
+  ggtitle("de Faria tumor cell type according to healthy reference")
+
+ggsave("/home/sofia/Projects/etmr/defaria/scRNA/paper_data/plots/etmr_cell_plot.jpeg", etmr_cell_plot, width = 6, height = 3, units = "in", dpi = 600)
+
+etmr_cell_hist <- ggplot(all_umap %>% filter(condition == "etmr"), aes(x = leiden, fill = CellClass)) +
+  geom_bar(position = "fill",  color = "gray") +
+  scale_fill_manual(values = c("#ff9aa2", "#ffb7b2", "#ffdac1", "#e2f0cb", "#b5ead7", "#c7ceea"))  +
+  theme_classic() +
+  ggtitle("de Faria tumor cell type according to healthy reference")
+
+ggsave("/home/sofia/Projects/etmr/defaria/scRNA/paper_data/plots/etmr_cell_hist_ref.jpeg", etmr_cell_hist, width = 6, height = 3, units = "in", dpi = 600)
 
 #Save plots individually
 cell_plot <- all_cell_plot + etmr_cell_plot + plot_layout(guides = "collect")  + plot_annotation(title = "Cell type in healthy cells and ETMR snRNA data")

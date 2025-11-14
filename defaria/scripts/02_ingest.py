@@ -48,10 +48,7 @@ all_data.obs["leiden"] = (
 #For some reason the Age column is read as string, convert to numeric
 experiment_data.obs["Age"] = pd.to_numeric(experiment_data.obs["Age"])
 
-#Ensuring consistency of cluster names and colors
-all_data.obs["leiden"] = (
-    all_data.obs["leiden"].astype("category").cat.reorder_categories(ref_data.obs["leiden"].cat.categories)
-)
+
 # fix category colors
 for key in ref_data.uns:
     if key.endswith("_colors"):
