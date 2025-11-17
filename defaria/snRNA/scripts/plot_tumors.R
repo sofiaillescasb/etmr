@@ -26,6 +26,7 @@ patient_info <- tribble(
   "GSM8058165", 39.6, "M")
 
 etmr <- convert_to_seurat(etmr_ad)
+
 etmr@meta.data <- etmr@meta.data   %>%
   left_join(patient_info, by = "orig.ident")
 
@@ -33,106 +34,66 @@ etmr@meta.data <- etmr@meta.data   %>%
 
 umap_etmr <- cbind(Embeddings(etmr, "umap_unintegrated"), etmr@meta.data)
 
-etmr_tumortype_plot <- plot_general(umap_etmr, "umapunintegrated_1", "umapunintegrated_2", "Tumor_Type") +
-  guides(colour = guide_legend(override.aes = list(size=3))) +
-  scale_color_manual(values = c("#6c9a8b", "#e8998d")) 
-
-ggsave(etmr_tumortype_plot, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/etmr_tumortype_plot_unint.jpeg", width = 8, height = 4, units = "in", dpi = 600)
-
-etmr_unint_tumortype_hist <- plot_hist(umap_etmr, "leiden_unintegrated", "Tumor_Type") +
-  scale_fill_manual(values = c("#6c9a8b", "#e8998d"))  +
-  ggtitle("Unintegrated clusters")  
-
-ggsave(etmr_unint_tumortype_hist, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/etmr_tumortype_hist_unint.jpeg", width = 8, height = 4, units = "in", dpi = 600)
-
 ############################################# Harmony integration #####################################################################################
 
 #Use umap instead of harmony because i ran umap after harmony when i integrated the data
 umap_harm <- cbind(Embeddings(etmr, "umap_harmony"), etmr@meta.data)
 
-etmr_tumortype_harm_plot <- plot_general(umap_harm, "umapharmony_1", "umapharmony_2", "Tumor_Type") +
-  guides(colour = guide_legend(override.aes = list(size=3))) +
-  scale_color_manual(values = c("#6c9a8b", "#e8998d")) 
-  
-
-ggsave(etmr_tumortype_harm_plot, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/etmr_tumortype_plot_harm.jpeg", width = 8, height = 4, units = "in", dpi = 600)
-
-etmr_harm_tumortype_hist <- plot_hist(umap_harm, "leiden_harmony", "Tumor_Type") +
-  scale_fill_manual(values = c("#6c9a8b", "#e8998d"))  +
-  ggtitle("Harmony-integrated clusters")  
-
-
-ggsave(etmr_harm_tumortype_hist, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/etmr_tumortype_hist_harm.jpeg", width = 8, height = 4, units = "in", dpi = 600)
-
 ############################################# Scanorama integration ###################################################################################
 
 umap_scan <- cbind(Embeddings(etmr, "umap_scanorama"), etmr@meta.data)
   
-etmr_tumortype_scanorama_plot <- plot_general(umap_scan, "umapscanorama_1", "umapscanorama_2", "Tumor_Type") +
-  guides(colour = guide_legend(override.aes = list(size=3))) +
-  scale_color_manual(values = c("#6c9a8b", "#e8998d")) 
+############################################# umaps ###################################################################################
 
-ggsave(etmr_tumortype_scanorama_plot, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/etmr_tumortype_scanorama_plot.jpeg", width = 8, height = 4, units = "in", dpi = 600)
+age_colors <- c("#d16ba5", "#86a8e7", "#5ffbf1")
+sex_colors <- c("#fdff9a", "#98bfff")
+tt_colors <- c("#a294ff", "#a9ff95")
+id_colors <-c("#33a8c7", "#52e3e1", "#a0e426", "#fdf148", "#ffab00", "#f77976", "#f050ae", "#d883ff", "#9336fd")
 
-etmr_scan_tumortype_hist <- plot_hist(umap_scan, "leiden_scanorama", "Tumor_Type") +
-  scale_fill_manual(values = c("#6c9a8b", "#e8998d"))  +
-  ggtitle("Scanorama-integrated clusters")  
 
-ggsave(etmr_scan_tumortype_hist, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/etmr_scan_tumortype_hist.jpeg", width = 8, height = 4, units = "in", dpi = 600)
-
-############################################# joined integration plots ###################################################################################
-
-joined_etmr_int_plots <- (etmr_tumortype_plot + ggtitle("No integration")) + 
-  (etmr_tumortype_harm_plot + ggtitle("Harmony integration")) + (etmr_tumortype_scanorama_plot + ggtitle("Scanorama integration")) + 
-  plot_layout(guides = "collect") + plot_annotation(title = "Integration of tumor types in ETMR snRNA data")
-
-ggsave(joined_etmr_int_plots, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/joined_etmr_int_plots.jpeg", width = 12, height = 4, units = "in", dpi = 600)
-
-joined_etmr_int_hist <- etmr_unint_tumortype_hist + etmr_harm_tumortype_hist + etmr_scan_tumortype_hist + 
-  plot_layout(guides = "collect") 
-
-ggsave(joined_etmr_int_hist, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/joined_etmr_int_hist.jpeg", width = 12, height = 4, units = "in", dpi = 600)
-
-############################################# Age ###################################################################################
-age_plots <- plot_one_over_other(umap_etmr, "umapunintegrated_1", "umapunintegrated_2", "Age", "Sex","M", "F") +
-  plot_one_over_other(umap_harm, "umapharmony_1", "umapharmony_2", "Age", "Sex","M", "F") +
-  plot_one_over_other(umap_scan, "umapscanorama_1", "umapscanorama_2", "Age", "Sex","M", "F") +
-  plot_layout(guides = "collect") &
-  scale_color_gradientn(colors = c("#d16ba5", "#86a8e7", "#5ffbf1")) & 
-  plot_annotation(title = "Age distribution accross integration methods in ETMR snRNA data") 
+age_plots <- plot_with_patchwork("Age", "Sex","M", "F") &
+  scale_color_gradientn(colors = age_colors) 
   
-
-sex_plots <- plot_one_over_other(umap_etmr, "umapunintegrated_1", "umapunintegrated_2", "Sex", "Sex","M", "F") + 
-  plot_one_over_other(umap_harm, "umapharmony_1", "umapharmony_2", "Sex", "Sex","M", "F") + 
-  plot_one_over_other(umap_scan, "umapscanorama_1", "umapscanorama_2", "Sex", "Sex","M", "F") +
-  plot_annotation(title = "Sex distribution accross integration methods in ETMR snRNA data") +
-  plot_layout(guides = "collect") &
+sex_plots <- plot_with_patchwork("Sex", "Sex","M", "F") &
   guides(colour = guide_legend(override.aes = list(size=3))) &
-  scale_color_manual(values = c("#fdff9a", "#98bfff")) 
+  scale_color_manual(values = sex_colors) 
 
 
-tumor_type_plot <- plot_one_over_other(umap_etmr, "umapunintegrated_1", "umapunintegrated_2", "Tumor_Type", "Tumor_Type","C19MC", "Dicer") +
-  plot_one_over_other(umap_harm, "umapharmony_1", "umapharmony_2", "Tumor_Type", "Tumor_Type","C19MC", "Dicer") +
-  plot_one_over_other(umap_scan, "umapscanorama_1", "umapscanorama_2", "Tumor_Type", "Tumor_Type","C19MC", "Dicer") +
-  plot_layout(guides = "collect") +
-  plot_annotation(title = "Tumor type distribution accross integration methods in ETMR snRNA data") &
+tumor_type_plot <- plot_with_patchwork("Tumor_Type", "Tumor_Type","C19MC", "Dicer") &
   guides(colour = guide_legend(override.aes = list(size=3))) &
-  scale_color_manual(values = c("#a294ff", "#a9ff95")) 
-
-  
-
-tumor_type_plot / sex_plots / age_plots 
+  scale_color_manual(values = tt_colors) 
 
 
-etmr_age_scanorama_plot <- plot_general(umap_scan, "umapscanorama_1", "umapscanorama_2", "Age") 
+id_plot <- plot_with_patchwork("orig.ident", "Sex","M", "F") &
+  guides(colour = guide_legend(override.aes = list(size=3))) &
+  scale_color_manual(values =id_colors) 
 
-ggsave(etmr_tumortype_scanorama_plot, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/etmr_tumortype_scanorama_plot.jpeg", width = 8, height = 4, units = "in", dpi = 600)
+all_plots <- id_plot / tumor_type_plot / sex_plots / age_plots 
 
-etmr_scan_tumortype_hist <- plot_hist(umap_scan, "leiden_scanorama", "Tumor_Type") +
-  scale_fill_manual(values = c("#6c9a8b", "#e8998d"))  +
-  ggtitle("Scanorama-integrated clusters")
+ggsave(all_plots, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/all_plots.jpeg", width = 12, height = 12, units = "in", dpi = 600)
 
-ggsave(etmr_scan_tumortype_hist, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/etmr_scan_tumortype_hist.jpeg", width = 8, height = 4, units = "in", dpi = 600)
+############################################# histograms ###################################################################################
 
+id_hist <- hist_with_patchwork("orig.ident") &
+  scale_fill_manual(values = id_colors) 
+
+sex_hist <- hist_with_patchwork("Sex") &
+  scale_fill_manual(values = sex_colors)
+
+tumor_type_hist <- hist_with_patchwork("Tumor_Type") &
+  scale_fill_manual(values = tt_colors) 
+
+umap_etmr <- umap_etmr %>% mutate(Age = ordered(factor(ifelse(Age < 20, "12", ifelse(Age > 40, "48", "20 - 40"))), c("12", "20 - 40", "48")))
+umap_harm <- umap_harm %>% mutate(Age = ordered(factor(ifelse(Age < 20, "12", ifelse(Age > 40, "48", "20 - 40"))), c("12", "20 - 40", "48")))
+umap_scan <- umap_scan %>% mutate(Age = ordered(factor(ifelse(Age < 20, "12", ifelse(Age > 40, "48", "20 - 40"))), c("12", "20 - 40", "48")))
+
+age_hist <- hist_with_patchwork("Age") &
+  scale_fill_manual(values = age_colors)
+
+all_hists <- id_hist  / tumor_type_hist / sex_hist / age_hist 
+
+ggsave(all_hists, filename="/home/sofia/Projects/etmr/defaria/snRNA/plots/all_hists.jpeg", width = 12, height = 12, units = "in", dpi = 600)
+
+########################################################## dotplot ###############################################################################
 
 

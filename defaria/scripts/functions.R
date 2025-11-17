@@ -9,6 +9,11 @@ library(tidyverse)
 
 
 convert_to_seurat <- function(adata) {
+  require(reticulate)
+  require(Matrix)
+  require(anndata)
+  require(Seurat)
+  require(SeuratObject)
 
   # --- 1. Extract obsm keys ---
   obsm_list <- names(etmr_ad$obsm)
@@ -73,41 +78,62 @@ convert_to_seurat <- function(adata) {
 }
 
 
-
-
-plot_one_over_other <- function(umapdf, x, y, colvar, condition, group1, group2) {
-  p <- ggplot2::ggplot() +
-    ggplot2::geom_point(data = umapdf %>% dplyr::filter(get(condition) == group1),
+plot_one_over_other <- function(umapdf, x, y, colvar, condition, group1, group2, integration) {
+  require(ggplot2)
+  p <- ggplot() +
+    geom_point(data = umapdf %>% dplyr::filter(get(condition) == group1),
                aes(x = get(x), y = get(y), color = get(colvar)),
                alpha = 1, size = 0.5) +
-    ggplot2::geom_point(data = umapdf %>% dplyr::filter(get(condition) == group2),
+    geom_point(data = umapdf %>% dplyr::filter(get(condition) == group2),
                aes(x = get(x), y = get(y), color = get(colvar)),
                alpha = 1, size = 0.5) +
-    ggplot2::theme_classic() +
-    ggplot2::labs(x = x, y = y, color = colvar) 
+    theme_classic() +
+    labs(x = x, y = y, color = colvar) +
+    ggtitle(integration) 
   return(p)
 } 
 
 
 plot_general <- function(umapdf, x, y, colvar) {
+  require(ggplot2)
   p <- umapdf %>% 
-    ggplot2::ggplot(aes(x = get(x), y = get(y), color = get(colvar))) +
-    ggplot2::geom_point(alpha = 0.5, size = 0.5) +
-    ggplot2::theme_classic() +
-    ggplot2::labs(x = x, y = y, color = colvar)
+    ggplot(aes(x = get(x), y = get(y), color = get(colvar))) +
+    geom_point(alpha = 0.5, size = 0.5) +
+    theme_classic() +
+    labs(x = x, y = y, color = colvar)
   
   return(p)
-  }
+}
 
-plot_hist <- function(umapdf, x, colvar) {
+plot_with_patchwork <- function(colvar, condition, group1, group2) {
+  require(patchwork)
+  plot_one_over_other(umap_etmr, "umapunintegrated_1", "umapunintegrated_2", colvar, condition, group1, group2, "unintegrated") +
+    plot_one_over_other(umap_harm, "umapharmony_1", "umapharmony_2", colvar, condition, group1, group2, "harmony") +
+    
+    plot_one_over_other(umap_scan, "umapscanorama_1", "umapscanorama_2", colvar, condition, group1, group2, "scanorama") +
+    plot_layout(guides = "collect", axes = "collect") &
+    plot_annotation(title = paste0(colvar, " distribution across integration methods in ETMR snRNA data")) 
+}
+
+plot_hist <- function(umapdf, x, colvar, integration) {
+  require(ggplot2)
   h <- umapdf %>%
-    ggplot2::ggplot(aes(x = get(x),  fill = get(colvar))) +
-    ggplot2::geom_bar(position = "fill") +
-    ggplot2::theme_classic() +
-    ggplot2::ggtitle(paste0(colvar, "-integrated clusters")) +
-    ggplot2::theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    ggplot2::labs(x = x, fill = colvar)  +
-    ggplot2::theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+    ggplot(aes(x = get(x),  fill = get(colvar))) +
+    geom_bar(position = "fill") +
+    theme_classic() +
+    ggtitle(paste(colvar, integration)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    labs(x = x, fill = colvar) 
   
   return(h)
+}
+
+
+hist_with_patchwork <- function(colvar) {
+  require(patchwork)
+  plot_hist(umap_etmr, "leiden_unintegrated", colvar, "unintegrated") +
+    plot_hist(umap_harm, "leiden_harmony",  colvar,  "harmony") +
+    plot_hist(umap_scan, "leiden_scanorama", colvar, "scanorama") +
+    plot_layout(guides = "collect", axes = "collect") &
+    plot_annotation(title = paste0(colvar, " histogram across integration methods in ETMR snRNA data")) 
 }
