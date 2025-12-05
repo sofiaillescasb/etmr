@@ -32,7 +32,7 @@ sc.pp.neighbors(etmr1, n_neighbors=10, n_pcs=50)
 sc.tl.umap(etmr1)
 
 print("Computing" + input_path1 + "Leiden clustering...")
-sc.tl.leiden(etmr1, resolution=1)
+sc.tl.leiden(etmr1, resolution=.5)
 
 
 print("Computing" + input_path2 + " individual PCA...")
@@ -42,7 +42,7 @@ sc.pp.neighbors(etmr2, n_neighbors=10, n_pcs=50)
 sc.tl.umap(etmr2)
 
 print("Computing" + input_path2 + " individual Leiden clustering...")
-sc.tl.leiden(etmr2, resolution=1)
+sc.tl.leiden(etmr2, resolution=.5)
 
 etmr2.write_h5ad(str(input_path2)[:-5] + "_alone.h5ad")
 

@@ -3,7 +3,7 @@ import anndata as ad
 import sys
 import hdf5plugin #do not remove
 
-common_genes = pd.read_csv("/home/sofia/Projects/etmr/de Faria/snRNA/data/common_genes.txt", header=None)[0].tolist()
+common_genes = pd.read_csv("/home/sofia/Projects/etmr/de Faria/scRNA/data/common_genes.txt", header=None)[0].tolist()
 print("Reading" + str(sys.argv[1]) + "...")
 adata = ad.io.read_h5ad(str(sys.argv[1]), backed="r")
 
