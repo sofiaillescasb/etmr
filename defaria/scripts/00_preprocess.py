@@ -40,9 +40,9 @@ adata = adata[
 ].copy()
 
 # --- Normalize, find variable genes, scale ---
-sc.pp.normalize_total(adata, target_sum=1e4)
-sc.pp.log1p(adata)
-sc.pp.highly_variable_genes(adata, flavor='seurat')
+sc.pp.normalize_total(adata, target_sum=1e4) #library size normalization
+sc.pp.log1p(adata) #log-transformation
+sc.pp.highly_variable_genes(adata, flavor='seurat') #identify highly variable genes
 #adata = adata[:, adata.var['highly_variable']].copy()
 
 adata.layers["scale.data"] = adata.X.copy()
