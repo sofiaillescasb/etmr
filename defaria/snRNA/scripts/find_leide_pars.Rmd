@@ -1,0 +1,179 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(here)
+library(dplyr)
+library(tibble)
+library(Seurat)
+library(SeuratDisk)
+library(ggplot2)
+library(dplyr)
+library(tibble)
+```
+
+```{r}
+ids <- c(
+  "GSM8058157_KK22-H-225",
+"GSM8058158_KK22-H-226", 
+"GSM8058159_KK22-H-227",
+"GSM8058160_KK23-H-507",
+"GSM8058161_KK23-H-508",
+"GSM8058162_KK23-H-509",
+"GSM8058163_KK23-H-510",
+"GSM8058164_KK23-H-511",
+"GSM8058165_KK23-H-512"
+)
+
+path <- sapply(ids, function(x) paste0(here::here(), "/defaria/snRNA/data/raw/GSE254819_RAW/", x, "/"))
+
+read_data <- Read10X(path)
+
+snrna.data <- CreateSeuratObject(counts = read_data, project = "snfixedtumor")
+
+sample_info <- df <- tribble(
+  ~orig.ident,      ~Sample_ID,   ~Tumor_Type,
+  "GSM8058157", "KK22-H-225", "C19MC",
+  "GSM8058158", "KK22-H-226", "C19MC",
+  "GSM8058159", "KK22-H-227", "Dicer",
+  "GSM8058160", "KK23-H-507", "C19MC",
+  "GSM8058161", "KK23-H-508", "C19MC",
+  "GSM8058162", "KK23-H-509", "C19MC",
+  "GSM8058163", "KK23-H-510", "C19MC",
+  "GSM8058164", "KK23-H-511", "C19MC",
+  "GSM8058165", "KK23-H-512", "C19MC")
+
+
+snrna.data@meta.data <- snrna.data@meta.data %>%
+  rownames_to_column(var = "rownames") %>%
+  right_join(sample_info, by = "orig.ident") %>%
+  column_to_rownames(var = "rownames")
+```
+
+```{r}
+
+snrna.data[["percent.mt"]] <- PercentageFeatureSet(snrna.data, pattern = "^MT-")
+
+snrna.data <- subset(snrna.data, subset = nFeature_RNA > 200 & nCount_RNA < 40000 & percent.mt < 5)
+```
+
+```{r}
+snrna.data <- NormalizeData(snrna.data, normalization.method = "LogNormalize",
+  scale.factor = 10000)
+```
+
+```{r}
+snrna.data <- FindVariableFeatures(snrna.data, selection.method = "vst")
+
+data$data <- subset(data$data, avg_expr > 0)
+
+top10 <- head(VariableFeatures(snrna.data), 10)
+
+LabelPoints(plot = VariableFeaturePlot(snrna.data), points = top10, repel = TRUE, xnudge = 0, ynudge = 0)
+
+```
+
+```{r}
+snrna.data <- ScaleData(snrna.data, verbose = FALSE)
+
+#When you run this with features = NULL you use variable features by default
+snrna.data <- RunPCA(snrna.data, verbose = FALSE, seed.use = 2025, reduction.name = "unint_pca", npcs = 100) 
+
+DimPlot(snrna.data, reduction = "unint_pca") + NoLegend()
+
+
+ElbowPlot(snrna.data, reduction = "unint_pca", ndims = 30)
+ElbowPlot(snrna.data, reduction = "unint_pca", ndims = 35)
+ElbowPlot(snrna.data, reduction = "unint_pca", ndims = 40)
+ElbowPlot(snrna.data, reduction = "unint_pca", ndims = 50)
+ElbowPlot(snrna.data, reduction = "unint_pca", ndims = 70)
+ElbowPlot(snrna.data, reduction = "unint_pca", ndims = 100)
+
+DimHeatmap(snrna.data, dims = 1:10, cells = 500, balanced = TRUE)
+
+snrna.data@reductions$unint_pca@misc
+```
+
+```{r}
+set.seed(2025)
+
+pp_lst <- list()
+
+for (kk in seq(10, 40, 5)) {
+  for (rr in seq(0.5, 1.5, 0.5)) {
+    for (pc in seq(30, 50, 10)) {
+
+      graph_nm <- paste0("n", kk, "_pcs", pc)
+      umap_nm  <- paste0("umap_unint_n", kk, "_pcs", pc, "_res", rr)
+      clust_nm <- paste0("res", rr, "_n", kk, "_pcs", pc)
+
+      snrna.data <- FindNeighbors(
+        snrna.data,
+        dims = 1:pc,
+        reduction = "unint_pca",
+        k.param = kk,
+        graph.name = graph_nm
+      )
+
+      snrna.data <- FindClusters(
+        snrna.data,
+        graph.name = graph_nm,
+        resolution = rr,
+        algorithm = 4,
+        random.seed = 2025,
+        cluster.name = clust_nm
+      )
+
+      snrna.data <- RunUMAP(
+        snrna.data,
+        reduction = "unint_pca",
+        dims = 1:pc,
+        n.neighbors = kk,
+        reduction.name = umap_nm,
+        seed.use = 2025
+      )
+
+      pp_lst[[umap_nm]] <-
+        DimPlot(
+          snrna.data,
+          reduction = umap_nm,
+          group.by = clust_nm,
+          label = TRUE,
+          raster = TRUE,
+          pt.size = 2
+        ) + NoLegend()
+    }
+  }
+}
+
+
+
+lapply(names(pp_lst), function(x) ggsave(filename = paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/clusters/umaps/seurat/", x, ".png"), pp_lst[[x]]))
+
+
+```
+
+```{r}
+plot_hist <- function(umapdf, x, colvar, integration) {
+
+  h <- umapdf %>%
+    ggplot(aes(x = get(x),  fill = get(colvar))) +
+    geom_bar(position = "fill") +
+    theme_classic() +
+    ggtitle(paste(colvar, integration)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    labs(x = x, fill = colvar) 
+  
+  return(h)
+}
+
+#hacer histogramas
+for (u in names(snrna.data@meta.data)[-c(1:10)]) {
+  umapdf <- cbind()
+}
+
+
+
+```
