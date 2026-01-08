@@ -1,10 +1,12 @@
 
-source(paste0(here::here(), "/defaria/scripts/functions.R")) 
+
 
 #DO NOT LOAD TIDYVERSE, LEAVE AS IS
 library(reticulate)
 
 use_python("/home/sofia/miniconda3/bin/python", required = TRUE) #magic spell and absolute cornerstone
+
+source(paste0(here::here(), "/defaria/scripts/functions.R")) 
 
 library(anndata)
 library(patchwork)
@@ -15,6 +17,7 @@ library(Matrix)
 library(patchwork)
 library(Seurat)
 library(SeuratObject)
+library(here)
 
 py_require(c("anndata"))
 # #convert = TRUE To turn python objects into native R objects

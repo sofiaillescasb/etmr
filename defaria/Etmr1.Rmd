@@ -1,0 +1,1706 @@
+---
+title: "Jessa_muestras"
+output: html_document
+date: "2025-04-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# librerias
+
+```{r, warning = FALSE, message = FALSE}
+library(dplyr)
+library(Seurat)
+library(DropletQC)
+library(Matrix)
+library(SoupX)
+library(presto)
+library(openxlsx)
+library(gprofiler2)
+library(ggplot2)
+library(glmGamPoi)
+library(scCustomize)
+library(ComplexHeatmap)
+library(RColorBrewer)
+library(speckle)
+library(limma)
+library(ggplot2)
+library(ggrepel)
+library(patchwork)
+library(monocle3)
+library(SeuratWrappers)
+library(clustree)
+library(tibble)
+library(readxl)
+library(grid)
+library(gridExtra)
+library(ggtext)
+library(reshape2)
+library(pheatmap)
+```
+
+
+# soupX
+
+```{r}
+# KO
+data_etmr1 <- load10X("//10.128.4.102/omics/Analyzed_data/SinglecellRNAseq_mouse_AnnaPrieto_SoledadPerez/data/Jessa/Jessa_cellranger/ETMR1/outs")
+data_etmr1 <- autoEstCont(data_etmr1)
+data_etmr1 <- adjustCounts(data_etmr1, roundToInt=TRUE)
+```
+
+# dropletQC
+
+```{r}
+nf_data_etmr1 <- nuclear_fraction_tags("//10.128.4.102/omics/Analyzed_data/SinglecellRNAseq_mouse_AnnaPrieto_SoledadPerez/data/Jessa/Jessa_cellranger/ETMR1/outs", tiles = 1, cores = 8, verbose = FALSE)
+write.csv(nf_data_etmr1, "nf_data_etmr1.csv")
+nf_data_etmr1 <- read.csv("nf_data_etmr1.csv")
+```
+
+# creamos el seurat objects
+
+```{r}
+so_etmr1 <- CreateSeuratObject(counts = data_etmr1)
+so_etmr1
+```
+
+```{r}
+genes_expresados_1 <- rowSums(so_etmr1@assays$RNA@layers$counts) > 0
+so_etmr1 <- subset(so_etmr1, features = rownames(so_etmr1)[genes_expresados_1])
+```
+
+```{r}
+so_etmr1
+```
+
+
+# etiquetamos las muestras
+
+```{r}
+so_etmr1$sample_origin <- "etmr1"
+```
+
+
+# QC
+
+```{r}
+so_etmr1$percent.mt <- PercentageFeatureSet(so_etmr1, pattern = "^MT-")
+
+mean(so_etmr1$percent.mt)
+
+so_etmr1$percent.ribo <- PercentageFeatureSet(so_etmr1, pattern = "^RP[SL]")
+so_etmr1$nf <- nf_data_etmr1$nuclear_fraction
+
+feats <- c("nFeature_RNA","nCount_RNA","percent.mt", "percent.ribo", "nf")
+
+p1 <- VlnPlot(object = so_etmr1, features = feats, pt.size = 0.01, ncol = 5) + NoLegend()
+p1
+```
+
+```{r}
+feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo", "nf")
+y_limits <- list(
+  c(0, 12000),
+  c(0, 120000),
+  c(0, 12),
+  c(0, 40),
+  c(0, 1)
+)
+
+# Definir color único
+my_color <- "#FFF68F"
+
+# Asegurar que 'sample_origin' está presente (aunque solo tenga una muestra)
+so_etmr1$sample_origin <- factor("ETMR1")  # Etiqueta única
+
+# Crear los violin plots
+plots <- lapply(seq_along(feats), function(i) {
+  VlnPlot(
+    object = so_etmr1,
+    features = feats[i],
+    pt.size = 0,
+    group.by = "sample_origin"
+  ) +
+    scale_fill_manual(values = c("ETMR1" = my_color)) +
+    coord_cartesian(ylim = y_limits[[i]]) +
+    NoLegend() +
+    ggtitle(feats[i]) +
+    theme(plot.title = element_text(hjust = 0.5))
+})
+
+# Combinar en un solo panel
+combined_plot <- wrap_plots(plots, ncol = 5)
+
+# Mostrar
+print(combined_plot)
+
+# Guardar como imagen y PDF
+ggsave("resultados_etmr1/QC/QC_vlnplot_etmr1_prefiltrado.png", plot = combined_plot, width = 17, height = 9, dpi = 300)
+ggsave("resultados_etmr1/QC/pdfs/QC_vlnplot_etmr1_prefiltrado.pdf", plot = combined_plot, width = 17, height = 9, dpi = 300)
+```
+
+# guardado objetos prefiltrado
+
+```{r}
+saveRDS(so_etmr1, "so_etmr1_prefiltered.rds")
+so_etmr1 <- readRDS("so_etmr1_prefiltered.rds")
+```
+
+
+
+# filtrado
+
+```{r}
+so_etmr1
+so_etmr1 <- subset(so_etmr1,
+                   subset = nFeature_RNA > 200 &
+                            nFeature_RNA < 6000 &
+                            nCount_RNA < 40000 &
+                            percent.mt < 10)
+so_etmr1
+```
+
+# QC postfiltrado
+
+```{r}
+so_etmr1$percent.mt <- PercentageFeatureSet(so_etmr1, pattern = "^MT-")
+
+mean(so_etmr1$percent.mt)
+
+so_etmr1$percent.ribo <- PercentageFeatureSet(so_etmr1, pattern = "^RP[SL]")
+so_etmr1$nf <- nf_data_etmr1$nuclear_fraction
+
+feats <- c("nFeature_RNA","nCount_RNA","percent.mt", "percent.ribo", "nf")
+
+p1 <- VlnPlot(object = so_etmr1, features = feats, pt.size = 0.01, ncol = 5) + NoLegend()
+p1
+```
+
+```{r}
+feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo", "nf")
+y_limits <- list(
+  c(0, 12000),
+  c(0, 120000),
+  c(0, 12),
+  c(0, 40),
+  c(0, 1)
+)
+
+# Definir color único
+my_color <- "#FFF68F"
+
+# Asegurar que 'sample_origin' está presente (aunque solo tenga una muestra)
+so_etmr1$sample_origin <- factor("ETMR1")  # Etiqueta única
+
+# Crear los violin plots
+plots <- lapply(seq_along(feats), function(i) {
+  VlnPlot(
+    object = so_etmr1,
+    features = feats[i],
+    pt.size = 0,
+    group.by = "sample_origin"
+  ) +
+    scale_fill_manual(values = c("ETMR1" = my_color)) +
+    coord_cartesian(ylim = y_limits[[i]]) +
+    NoLegend() +
+    ggtitle(feats[i]) +
+    theme(plot.title = element_text(hjust = 0.5))
+})
+
+# Combinar en un solo panel
+combined_plot <- wrap_plots(plots, ncol = 5)
+
+# Mostrar
+print(combined_plot)
+
+# Guardar como imagen y PDF
+ggsave("resultados_etmr1/QC/QC_vlnplot_etmr1_postfiltrado.png", plot = combined_plot, width = 17, height = 9, dpi = 300)
+ggsave("resultados_etmr1/QC/pdfs/QC_vlnplot_etmr1_postfiltrado.pdf", plot = combined_plot, width = 17, height = 9, dpi = 300)
+```
+
+
+# guardado objetos postfiltrado
+
+```{r}
+saveRDS(so_etmr1, "so_etmr1_postfiltered.rds")
+so_etmr1 <- readRDS("so_etmr1_postfiltered.rds")
+```
+
+```{r}
+so_etmr1
+```
+
+# normalizamos
+
+```{r}
+so_etmr1 <- NormalizeData(so_etmr1, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+# variable features
+
+```{r}
+# no igual paper (un poco anticuado). este método - equivalente pero mas moderno
+so_etmr1 <- FindVariableFeatures(so_etmr1, selection.method = "vst", nfeatures = 2000)
+```
+
+# escalado
+
+```{r}
+# Escalado y regresión de nUMI (nCount_RNA) y % mitocondrial: paper
+so_etmr1 <- ScaleData(so_etmr1, vars.to.regress = c("nCount_RNA", "percent.mt"))
+```
+
+# PCA
+
+```{r}
+so_etmr1 <- RunPCA(so_etmr1, features = VariableFeatures(so_etmr1))
+```
+
+# clustering
+
+```{r}
+so_etmr1 <- FindNeighbors(so_etmr1, dims = 1:30)
+so_etmr1 <- FindClusters(so_etmr1, resolution = 0.8)
+# parametros paper
+```
+
+
+```{r}
+so_etmr1 <- RunUMAP(so_etmr1, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
+```
+
+Guardamos el num cels clusters:
+```{r}
+tabla_clusters <- table(so_etmr1@meta.data$seurat_clusters)
+print(tabla_clusters)
+tabla_clusters <- as.data.frame(tabla_clusters)
+colnames(tabla_clusters) <- c("seurat_clusters", "n_cells_total")
+write.csv(
+  tabla_clusters,
+  "tablas/tablas_num_cels_cluster_etmr1.csv",
+  row.names = FALSE
+)
+```
+
+
+
+
+
+
+# cell division scores
+
+```{r}
+so_etmr1 <- CellCycleScoring(object = so_etmr1,
+                          g2m.features = cc.genes$g2m.genes,
+                          s.features = cc.genes$s.genes)
+
+table(so_etmr1@meta.data[["Phase"]])
+#head(so_etmr1@meta.data)
+```
+
+
+# guardado objetos analizados
+
+```{r}
+saveRDS(so_etmr1, "so_etmr1_analyzed.rds")
+so_etmr1 <- readRDS("so_etmr1_analyzed.rds")
+```
+
+
+
+# biomarkers
+
+```{r}
+cluster_names <- levels(so_etmr1@meta.data$seurat_clusters)
+
+for (i in cluster_names) {
+  markers <- FindMarkers(so_etmr1, ident.1 = i, only.pos = TRUE)
+  df_name <- paste("markers", i, sep = "_")
+  write.csv(markers, paste("resultados_etmr1/markers_etmr1/", df_name, ".csv", sep = ""), row.names = TRUE)
+}
+```
+
+
+```{r}
+csv_folder <- "resultados_etmr1/markers_etmr1/"
+csv_files <- list.files(path = csv_folder, pattern = "\\.csv$", full.names = TRUE)
+file_names <- gsub("\\.csv$", "", basename(csv_files))
+ordered_indices <- order(as.numeric(gsub("markers_", "", file_names)))
+csv_files <- csv_files[ordered_indices]
+file_names <- file_names[ordered_indices]
+
+markers_dataframe_etmr1 <- do.call(cbind, lapply(csv_files, function(file) {
+  data <- read.csv(file, row.names = 1)
+  data_filtered <- data[data$avg_log2FC > 0, ]
+  top_50_genes <- rownames(data_filtered[1:50, ])
+  
+  return(top_50_genes)
+}))
+
+colnames(markers_dataframe_etmr1) <- file_names
+
+markers_dataframe_etmr1 <- as.data.frame(markers_dataframe_etmr1)
+colnames(markers_dataframe_etmr1) <- tools::file_path_sans_ext(basename(csv_files))
+rm(csv_files, csv_folder)
+
+write.csv(markers_dataframe_etmr1, "resultados_etmr1/markers_etmr1/top50_pos_markers_etmr1.csv", row.names = FALSE)
+markers_dataframe_etmr1 <- read.csv("resultados_etmr1/markers_etmr1/top50_pos_markers_etmr1.csv")
+```
+
+```{r}
+markers_16 <- FindMarkers(so_etmr1, ident.1 = "16.RDG_cyling_signature", only.pos = TRUE)
+markers_16 <- markers_16[markers_16$p_val_adj < 0.05, ]
+
+markers_16_against_rgd <- FindMarkers(so_etmr1, ident.1 = "16.RDG_cyling_signature", ident.2 = c("0.RDG_cyling",
+                 "1.RDG",
+                 "6.RDG_ambiguous",
+                 "7.RDG_cyling",
+                 "10.RDG",
+                 "11.RDG_cyling"), only.pos = TRUE)
+markers_16_against_rgd <- markers_16_against_rgd[markers_16_against_rgd$p_val_adj < 0.05, ]
+
+write.csv(markers_16, "markers_16_etmr1.csv", row.names = TRUE)
+markers_16 <- read.csv("markers_16_etmr1.csv")
+
+write.csv(markers_16_against_rgd, "markers_16_against_rgd_etmr1.csv", row.names = TRUE)
+markers_16_against_rgd <- read.csv("markers_16_against_rgd_etmr1.csv")
+```
+
+
+
+
+
+Solo top 20 y guardados en otro formato:
+
+```{r}
+Idents(so_etmr1) <- "seurat_clusters"
+
+markers_etmr1 <- FindAllMarkers(
+  so_etmr1,
+  only.pos = TRUE,
+  min.pct = 0.1,
+  logfc.threshold = 0.25,
+  test.use = "wilcox"
+)
+
+markers_etmr1_filt <- markers_etmr1 %>%
+  filter(p_val_adj <= 0.05, avg_log2FC >= 0.25) %>%
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 20) %>%
+  ungroup()
+
+markers_etmr1_genes <- markers_etmr1_filt %>%
+  mutate(ClusterNumber = as.numeric(as.character(cluster))) %>%
+  group_by(ClusterNumber) %>%
+  summarise(
+    Top20Genes = paste(gene, collapse = ", ")
+  ) %>%
+  ungroup()
+
+
+cluster_names <- data.frame(
+  ClusterNumber = seq_along(levels(so_etmr1@meta.data[["cluster_cell_type_phase"]])) - 1,
+  ClusterName = levels(so_etmr1@meta.data[["cluster_cell_type_phase"]])
+)
+
+markers_etmr1_genes <- markers_etmr1_genes %>%
+  left_join(cluster_names, by = "ClusterNumber") %>%
+  select(ClusterNumber, ClusterName, Top20Genes)
+
+
+
+write.csv(
+  markers_etmr1,
+  "resultados/marcadores/markers_etmr1_full.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  markers_etmr1_filt,
+  "resultados/marcadores/markers_etmr1_filtered_top20.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  markers_etmr1_genes,
+  "resultados/marcadores/markers_etmr1_top20genes_justnames.csv",
+  row.names = FALSE
+)
+```
+
+
+
+# figuras marcadores
+
+Figuras expresion marcadores:
+
+```{r}
+save_marker_featureplots <- function(output_dir, seurat_obj, markers_list) {
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+
+  pdf_dir <- file.path(output_dir, "0pdfs")
+  if (!dir.exists(pdf_dir)) {
+    dir.create(pdf_dir)
+  }
+
+  obj_name <- deparse(substitute(seurat_obj))
+
+  for (cell_type in names(markers_list)) {
+    cat("Procesando tipo celular:", cell_type, "\n")
+
+    cell_dir <- file.path(output_dir, cell_type)
+    if (!dir.exists(cell_dir)) {
+      dir.create(cell_dir)
+    }
+    markers <- markers_list[[cell_type]]
+
+    for (gene in markers) {
+      cat("  Generando FeaturePlot para:", gene, "\n")
+
+      p <- FeaturePlot(seurat_obj, features = gene) +
+        ggtitle(paste0(gene, " - ", cell_type))
+
+      file_base <- paste0(obj_name, "_", gene)
+
+      png_path <- file.path(cell_dir, paste0(file_base, ".png"))
+      ggsave(filename = png_path, plot = p, width = 6, height = 5, dpi = 300)
+
+      pdf_path <- file.path(pdf_dir, paste0(file_base, ".pdf"))
+      ggsave(filename = pdf_path, plot = p, width = 6, height = 5)
+    }
+  }
+}
+```
+
+
+
+```{r}
+markers_list <- list(
+  astrocytes = c("APOE", "SLC1A3", "GFAP", "SLC1A2"),
+  microglia = c("AIF1", "TYROBP"),
+  ipc = c("ASCL1", "GADD45G", "BTG2", "CCND2"),
+  rdg = c("PAX6", "SOX2", "VIM", "NES", "CCND1", "PTN", "HMGA2", "HES1", "HES5", "FABP7", "SLC1A3"),
+  nec = c("PRTG",  "WNT8B", "ID3"),
+  neuron = c("SNAP25", "DCX", "DNER"),
+  gabaergic = c("GAD1", "GAD2"),
+  cycling = c("TOP2A", "MKI67", "AURKA")
+)
+```
+
+```{r}
+save_marker_featureplots(
+  output_dir = "resultados/marcadores/",
+  seurat_obj = so_etmr1,
+  markers_list = markers_list
+)
+```
+
+
+
+
+# anotación provisional
+
+```{r}
+endothelial <- c("CLDN5", "MCAM")
+FeaturePlot(so_etmr1, features = endothelial)
+# NO HAY
+
+red_blood_cells <- c("HEMGN")
+FeaturePlot(so_etmr1, features = red_blood_cells)
+# NO HAY
+
+vlmc <- c("COL1A1", "VTN")
+FeaturePlot(so_etmr1, features = vlmc)
+# NO HAY
+
+pericytes <- c("CSPG4", "PDGFRB")
+FeaturePlot(so_etmr1, features = pericytes)
+# NO HAY
+
+cajal_retzius <- c("RELN", "LHX5")
+FeaturePlot(so_etmr1, features = cajal_retzius)
+# NO HAY
+
+astrocytes <- c("APOE", "ALDH1L1", "SLC1A3", "GFAP", "SLC1A2", "FABP7")
+FeaturePlot(so_etmr1, features = astrocytes)
+# SÍ HAY: CLUSTER 9
+
+oligodendrocytes <- c("OLIG1", "OLIG2", "PDGFRA", "CSPG4", "NKX2-2", "SOX10")
+FeaturePlot(so_etmr1, features = oligodendrocytes)
+# NO HAY
+
+microglia <- c("AIF1", "TMEM119", "TYROBP")
+FeaturePlot(so_etmr1, features = microglia)
+# SI HAY: CLUSTERS 13, 17
+
+
+
+
+neu_general <- c("SNAP25", "DCX", "DNER")
+FeaturePlot(so_etmr1, features = neu_general)
+# SÍ HAY: CLUSTERS 4? 11, 8, 12, 2, 3, 14
+
+interneuron <- c("GAD1", "GAD2", "DLX2", "DLX1")
+FeaturePlot(so_etmr1, features = interneuron)
+# SÍ HAY: CLUSTERS 11, 8?, 12, 2?, 3, 14
+
+excitatory_neu <- c("NEUROD2", "NEUROD6", "SLC17A6")
+FeaturePlot(so_etmr1, features = excitatory_neu)
+# SÍ HAY: CLUSTERS 11, 2?
+
+
+
+cycling <- c("TOP2A", "MKI67", "AURKA")
+FeaturePlot(so_etmr1, features = cycling)
+# SÍ HAY: 18, 7 , 10, 16, 0
+
+ipc <- c("GADD45G", "BTG2", "CCND2", # general
+         "ASCL1",                    # inhibitorias
+         "NEUROG2")         # excitatorias
+FeaturePlot(so_etmr1, features = ipc)
+# SÍ HAY: 4, 15?, 5? 
+
+
+
+nec_rdg <- c("PAX6", "SOX2")
+FeaturePlot(so_etmr1, features = nec_rdg)
+
+rdg <- c("NES", "CCND1", "PTN", "HMGA2", "HES1", "HES5", "FABP7", "SLC1A3", "VIM")
+FeaturePlot(so_etmr1, features = rdg)
+
+nec <- c("PRTG", "WNT8B", "ID3")
+FeaturePlot(so_etmr1, features = nec)
+
+```
+
+```{r}
+paper_progenitor <- c("NFYB", "VIM" )
+FeaturePlot(so_etmr1, features = paper_progenitor)
+
+paper_progenitor_ipc <- c("SOX2", "SOX21", "ASCL1" )
+FeaturePlot(so_etmr1, features = paper_progenitor_ipc)
+
+paper_neuron <- c("NEUROD1", "PBX3", "KLF7", "DCX", "GAD2", "GRIA2")
+FeaturePlot(so_etmr1, features = paper_neuron)
+```
+
+```{r}
+etmr1_markers <- c(
+  "APOE", "SLC1A3", "GFAP", "SLC1A2", # ASTROCITOS
+  "AIF1", "TYROBP",  # MICROGLIA
+  "ASCL1", "GADD45G", "BTG2", "CCND2", # IPC
+  "PAX6", "SOX2", "VIM", "NES", "CCND1", "PTN", "HMGA2", "HES1", "HES5", "FABP7", "SLC1A3", # RDG
+  "SNAP25", "DCX", "DNER", # NEURONA
+  "GAD1", "GAD2", # GABAÉRGICAS
+  "TOP2A", "MKI67", "AURKA" # Cycling
+)
+
+scCustomize::Clustered_DotPlot(
+  so_etmr1, 
+  features = etmr1_markers, 
+  plot_km_elbow = FALSE, 
+  colors_use_exp = colorRampPalette(c("blue", "white", "red"))(20)
+)
+```
+
+```{r}
+cluster_ids <- c("0.RDG_cyling",
+                 "1.RDG",
+                 "2.Neuron",
+                 "3.Neuron",
+                 "4.Neuron",
+                 "5.RDG_IPC",
+                 "6.RDG_ambiguous",
+                 "7.RDG_cyling",
+                 "8.IPC",
+                 "9.Astrocytes",
+                 "10.RDG",
+                 "11.RDG_cyling",
+                 "12.Neuron",
+                 "13.Microglia",
+                 "14.Neuron",
+                 "15.RDG_IPC",
+                 "16.RDG_cyling_signature",
+                 "17.IPC_cycling",
+                 "18.Microglia")
+
+# RAROS: 16, 6
+```
+
+```{r}
+names(cluster_ids) <- levels(so_etmr1)
+so_etmr1 <- RenameIdents(so_etmr1, cluster_ids)
+so_etmr1$cell_types_etmr1 <- so_etmr1@active.ident
+
+DimPlot(so_etmr1, reduction = "umap.unintegrated", label = T) + NoLegend()
+```
+
+
+# añadir categorias de tipos celulares
+
+```{r}
+so_etmr1@meta.data$cell_types_2_etmr1 <- so_etmr1@meta.data$cell_types_etmr1
+```
+
+```{r}
+so_etmr1@meta.data$cell_types_2_etmr1 <- factor(
+  so_etmr1@meta.data$cell_types_2_etmr1,
+  levels = c("0.RDG_cyling",
+                 "1.RDG",
+                 "2.Neuron",
+                 "3.Neuron",
+                 "4.Neuron",
+                 "5.RDG_IPC",
+                 "6.RDG_ambiguous",
+                 "7.RDG_cyling",
+                 "8.IPC",
+                 "9.Astrocytes",
+                 "10.RDG",
+                 "11.RDG_cyling",
+                 "12.Neuron",
+                 "13.Microglia",
+                 "14.Neuron",
+                 "15.RDG_IPC",
+                 "16.RDG_cyling_signature",
+                 "17.IPC_cycling",
+                 "18.Microglia"),
+  labels = c("RDG",
+                 "RDG",
+                 "Neuron",
+                 "Neuron",
+                 "Neuron",
+                 "RDG",
+                 "RDG",
+                 "RDG",
+                 "IPC",
+                 "Astrocytes",
+                 "RDG",
+                 "RDG",
+                 "Neuron",
+                 "Microglia",
+                 "Neuron",
+                 "RDG",
+                 "RDG",
+                 "IPC",
+                 "Microglia")
+)
+
+```
+
+
+# anotacion final paper
+
+
+```{r}
+meta <- so_etmr1@meta.data
+
+meta$cells <- rownames(meta)
+identical(meta$cells, rownames(meta))
+```
+
+```{r}
+table(meta$seurat_clusters, meta$cell_types_2)
+```
+
+```{r}
+meta$cluster_cell_type_2 <- paste(meta$seurat_clusters, meta$cell_types_2_etmr1, sep = ".")
+```
+
+```{r}
+table(meta$cluster_cell_type_2, meta$cell_types_2)
+```
+
+```{r}
+meta_subset <- meta %>%
+  filter(str_detect(cluster_cell_type_2, "NEC|RDG|IPC"))
+
+table(meta_subset$cluster_cell_type_2, meta_subset$cell_types_2)
+```
+
+```{r}
+table(meta_subset$cluster_cell_type_2, meta_subset$Phase)
+
+```
+
+```{r}
+meta_subset <- meta_subset %>%
+  group_by(cluster_cell_type_2) %>%
+  mutate(
+    total_cells = n(),
+    n_G1  = sum(Phase == "G1"),
+    n_S   = sum(Phase == "S"),
+    n_G2M = sum(Phase == "G2M"),
+    add_G1  = n_G1  > total_cells/3,
+    add_S   = n_S   > total_cells/3,
+    add_G2M = n_G2M > total_cells/3,
+    cluster_cell_type_2_phase = paste0(
+      cluster_cell_type_2,
+      ifelse(add_G1,  "_G1",  ""),
+      ifelse(add_S,   "_S",   ""),
+      ifelse(add_G2M, "_G2M", "")
+    )
+  ) %>%
+  ungroup()
+```
+
+
+```{r}
+table(meta_subset$cluster_cell_type_2_phase, meta_subset$Phase)
+
+round(addmargins(prop.table(table(meta_subset$cluster_cell_type_2_phase, meta_subset$Phase), margin = 1)), 3)
+```
+
+```{r}
+meta <- meta %>%
+  left_join(
+    meta_subset %>% select(cells, cluster_cell_type_2_phase),
+    by = "cells"
+  ) %>%
+  mutate(
+    cluster_cell_type_2_phase = coalesce(cluster_cell_type_2_phase, cluster_cell_type_2)
+  )
+```
+
+```{r}
+identical(rownames(so_etmr1@meta.data), meta$cells)
+# si es true podemos unir la columna directamente asi:
+so_etmr1$cluster_cell_type <- meta$cluster_cell_type_2
+so_etmr1$cluster_cell_type_phase <- meta$cluster_cell_type_2_phase
+```
+
+```{r}
+# pasarlos a factor y ordenarlos:
+nums <- as.numeric(sub("\\..*", "", unique(so_etmr1$cluster_cell_type)))
+sorted <- unique(so_etmr1$cluster_cell_type)[order(nums)]
+sorted
+so_etmr1$cluster_cell_type <- factor(so_etmr1$cluster_cell_type, 
+                                           levels = sorted)
+
+nums <- as.numeric(sub("\\..*", "", unique(so_etmr1$cluster_cell_type_phase)))
+sorted <- unique(so_etmr1$cluster_cell_type_phase)[order(nums)]
+sorted
+so_etmr1$cluster_cell_type_phase <- factor(so_etmr1$cluster_cell_type_phase, 
+                                           levels = sorted)
+```
+
+
+
+## añadir condition a la variable
+
+```{r}
+so_etmr1$condition <- "tumor"
+
+so_etmr1$cluster_cell_type_condition <- paste(
+  so_etmr1$cluster_cell_type,
+  so_etmr1$condition,
+  sep = "_"
+)
+```
+
+
+# graficos umap
+
+```{r}
+DimPlot(so_etmr1, reduction = "umap.unintegrated", label = T) + NoLegend()
+DimPlot(so_etmr1, reduction = "umap.unintegrated", label = T, group.by = "seurat_clusters") + NoLegend()
+DimPlot(so_etmr1, reduction = "umap.unintegrated", label = T, group.by = "cell_types_2_etmr1") + NoLegend()
+DimPlot(so_etmr1, reduction = "umap.unintegrated", group.by = "cluster_cell_type", label = T)
+DimPlot(so_etmr1, reduction = "umap.unintegrated", group.by = "cluster_cell_type_phase", label = T)
+```
+
+```{r}
+p1 <- DimPlot(so_etmr1, reduction = "umap.unintegrated", label = T, group.by = "seurat_clusters", label.size = 6)
+
+ggsave(filename = "resultados_etmr1/umap_etmr1.png", plot = p1, width = 10, height = 8)
+ggsave(filename = "resultados_etmr1/pdfs/umap_etmr1.pdf", plot = p1, width = 10, height = 8)
+
+p2 <- DimPlot(so_etmr1, reduction = "umap.unintegrated", label = T, label.size = 4) + NoLegend()
+ggsave("resultados_etmr1/umap_etmr1_anotado.png", plot = p2, width = 10, height = 8)
+ggsave("resultados_etmr1/pdfs/umap_etmr1_anotado.pdf", plot = p2, width = 10, height = 8)
+
+p3 <- DimPlot(so_etmr1, reduction = "umap.unintegrated", group.by = "cell_types_2_etmr1", label = T, label.size = 4) + NoLegend()
+ggsave("resultados_etmr1/umap_etmr1_cell_types.png", plot = p3, width = 10, height = 8)
+ggsave("resultados_etmr1/pdfs/umap_etmr1_cell_types.pdf", plot = p3, width = 10, height = 8)
+
+p3 <- DimPlot(so_etmr1, reduction = "umap.unintegrated", group.by = "cluster_cell_type")
+ggsave("umap_cluster_cell_type.png", p3, width = 8, height = 5, dpi = 300)
+ggsave("pdfs/umap_cluster_cell_type.pdf", p3, width = 8, height = 5)
+
+p3 <- DimPlot(so_etmr1, reduction = "umap.unintegrated", group.by = "cluster_cell_type_phase")
+ggsave("umap_cluster_cell_type_phase.png", p3, width = 8, height = 5, dpi = 300)
+ggsave("pdfs/umap_cluster_cell_type_phase.pdf", p3, width = 8, height = 5)
+```
+
+# QC por cluster
+```{r}
+feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo", "nf")
+y_limits <- list(
+  c(0, 7500),
+  c(0, 35000),
+  c(0, 12),
+  c(0, 60),
+  c(0, 1)
+)
+
+plots <- lapply(seq_along(feats), function(i) {
+  VlnPlot(
+    object = so_etmr1,
+    features = feats[i],
+    pt.size = 0) +
+    coord_cartesian(ylim = y_limits[[i]]) +
+    NoLegend() +
+    ggtitle(feats[i]) +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    )
+})
+combined_plot <- wrap_plots(plots, ncol = 5)
+print(combined_plot)
+
+ggsave("QC_vlnplot_etmr1_clusters.png", plot = combined_plot, width = 17, height = 9, dpi = 300)
+ggsave("QC_vlnplot_etmr1_clusters.pdf", plot = combined_plot, width = 17, height = 9, dpi = 300)
+```
+
+
+# graficos anotacion
+
+```{r}
+etmr1_markers <- c(
+  "APOE", "SLC1A3", "GFAP", "SLC1A2", # ASTROCITOS
+  "AIF1", "TYROBP",  # MICROGLIA
+  "ASCL1", "GADD45G", "BTG2", "CCND2", # IPC
+  "PAX6", "SOX2", "VIM", "NES", "CCND1", "PTN", "HMGA2", "HES1", "HES5", "FABP7", "SLC1A3", # RDG
+  "SNAP25", "DCX", "DNER", # NEURONA
+  "GAD1", "GAD2", # GABAÉRGICAS
+  "TOP2A", "MKI67", "AURKA" # Cycling
+)
+
+p4 <- scCustomize::Clustered_DotPlot(
+  so_etmr1, 
+  features = etmr1_markers, 
+  plot_km_elbow = FALSE, 
+  colors_use_exp = colorRampPalette(c("blue", "white", "red"))(20)
+)
+p4
+
+png("resultados_etmr1/dotplot_etmr1.png", width = 1200, height = 600)
+ComplexHeatmap::draw(p4)
+dev.off()
+
+pdf("resultados_etmr1/pdfs/dotplot_etmr1.pdf", width = 16, height = 8)
+ComplexHeatmap::draw(p4)
+dev.off()
+```
+
+
+
+
+
+# graficos up signatura
+
+```{r}
+# upregulated
+signature_etmr <- read.xlsx("signature/ETMRsig_PositiveGenes.xlsx")
+gene.set_up <- intersect(signature_etmr$GeneNames, rownames(so_etmr1))
+
+rm(signature_etmr)
+```
+
+
+## celular
+
+```{r}
+matriz1 <- expm1(GetAssayData(so_etmr1, layer = "data")[gene.set_up, ])
+matriz1 <- as.data.frame(matriz1)
+
+matriz1 <- colMeans(matriz1)
+matriz1 <- as.data.frame(matriz1)
+
+so_etmr1$matriz1 <- matriz1$matriz1
+```
+
+
+## cluster
+
+```{r}
+matriz2 <- AverageExpression(
+  so_etmr1,
+  features = gene.set_up,
+  group.by = c("seurat_clusters"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2 <- as.data.frame(matriz2$RNA)
+
+matriz2 <- colMeans(matriz2)
+
+matriz2 <- as.data.frame(matriz2)
+matriz2 <- matriz2 %>% rownames_to_column("seurat_clusters")
+
+so_etmr1$matriz2 <- matriz2[so_etmr1$seurat_clusters, "matriz2"]
+```
+
+
+
+## limites
+
+```{r}
+valor_maximo_absoluto_matriz1 <- as.numeric(quantile(abs(so_etmr1$matriz1), 0.99))
+valor_maximo_absoluto_matriz1  
+valor_maximo_absoluto_matriz2 <- max(abs(so_etmr1$matriz2)) 
+valor_maximo_absoluto_matriz2  
+```
+
+## graficas
+
+```{r, message=FALSE}
+truncar_valores <- function(x, min_val, max_val) {
+  pmin(pmax(x, min_val), max_val)
+}
+
+limite1 <- c(0, 1.2)
+so_etmr1$matriz1_truncada <- truncar_valores(so_etmr1$matriz1, limite1[1], limite1[2])
+FeaturePlot(so_etmr1, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular")
+
+limite2 <- c(0, 1.2)
+so_etmr1$matriz2_truncada <- truncar_valores(so_etmr1$matriz2, limite2[1], limite2[2])
+FeaturePlot(so_etmr1, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters")
+```
+
+```{r}
+p1 <- FeaturePlot(so_etmr1, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.1)) & 
+  ggtitle("Expresión celular")
+ggsave("resultados_etmr1/KO_matriz1_upregulated.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("resultados_etmr1/pdfs/KO_matriz1_upregulated.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- FeaturePlot(so_etmr1, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.2)) & 
+  ggtitle("Expresión clusters")
+ggsave("resultados_etmr1/KO_matriz2_upregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("resultados_etmr1/pdfs/KO_matriz2_upregulated.pdf", plot = p2, width = 8, height = 6)
+
+```
+
+# graficos down signatura
+
+```{r}
+# downregulated
+signature_etmr_downregulated <- read.xlsx("signature/ETMRsig_NegativeGenes_withoutfoldchange.xlsx", colNames = FALSE)
+gene.set_down <- intersect(signature_etmr_downregulated$X1, rownames(so_etmr1))
+
+rm(signature_etmr_downregulated)
+```
+
+## celular
+
+```{r}
+matriz1 <- expm1(GetAssayData(so_etmr1, layer = "data")[gene.set_down, ])
+matriz1 <- as.data.frame(matriz1)
+
+matriz1 <- colMeans(matriz1)
+matriz1 <- as.data.frame(matriz1)
+
+so_etmr1$matriz1 <- matriz1$matriz1
+```
+
+
+## cluster
+
+```{r}
+matriz2 <- AverageExpression(
+  so_etmr1,
+  features = gene.set_down,
+  group.by = c("seurat_clusters"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2 <- as.data.frame(matriz2$RNA)
+
+matriz2 <- colMeans(matriz2)
+
+matriz2 <- as.data.frame(matriz2)
+matriz2 <- matriz2 %>% rownames_to_column("seurat_clusters")
+
+so_etmr1$matriz2 <- matriz2[so_etmr1$seurat_clusters, "matriz2"]
+```
+
+
+
+## limites
+
+```{r}
+valor_maximo_absoluto_matriz1 <- as.numeric(quantile(abs(so_etmr1$matriz1), 0.99))
+valor_maximo_absoluto_matriz1  
+valor_maximo_absoluto_matriz2 <- max(abs(so_etmr1$matriz2)) 
+valor_maximo_absoluto_matriz2  
+```
+[1] 0.6604545
+[1] 0.6004548
+
+
+## graficas
+
+```{r, message=FALSE}
+truncar_valores <- function(x, min_val, max_val) {
+  pmin(pmax(x, min_val), max_val)
+}
+
+limite1 <- c(0, 0.7)
+so_etmr1$matriz1_truncada <- truncar_valores(so_etmr1$matriz1, limite1[1], limite1[2])
+FeaturePlot(so_etmr1, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular")
+
+limite2 <- c(0, 0.7)
+so_etmr1$matriz2_truncada <- truncar_valores(so_etmr1$matriz2, limite2[1], limite2[2])
+FeaturePlot(so_etmr1, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters")
+```
+
+```{r}
+p1 <- FeaturePlot(so_etmr1, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.7)) & 
+  ggtitle("Expresión celular")
+ggsave("resultados_etmr1/matriz1_downregulated.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("resultados_etmr1/pdfs/matriz1_downregulated.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- FeaturePlot(so_etmr1, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.7)) & 
+  ggtitle("Expresión clusters")
+ggsave("resultados_etmr1/matriz2_downregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("resultados_etmr1/pdfs/matriz2_downregulated.pdf", plot = p2, width = 8, height = 6)
+
+```
+
+# graficos subset 6 marcadores
+
+```{r}
+markers_etmr_rafa <- toupper(c("Lin28a", "Sp8", "Prtg", "Trim71", "Greb1", "Igf2bp1"))
+```
+
+```{r}
+matriz1 <- expm1(GetAssayData(so_etmr1, layer = "data")[markers_etmr_rafa, ])
+matriz1 <- as.data.frame(matriz1)
+
+matriz1 <- colMeans(matriz1)
+matriz1 <- as.data.frame(matriz1)
+
+so_etmr1$matriz1 <- matriz1$matriz1
+```
+
+```{r}
+matriz2 <- AverageExpression(
+  so_etmr1,
+  features = markers_etmr_rafa,
+  group.by = c("seurat_clusters"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2 <- as.data.frame(matriz2$RNA)
+
+matriz2 <- colMeans(matriz2)
+
+matriz2 <- as.data.frame(matriz2)
+matriz2 <- matriz2 %>% rownames_to_column("seurat_clusters")
+
+so_etmr1$matriz2 <- matriz2[so_etmr1$seurat_clusters, "matriz2"]
+```
+
+
+
+```{r}
+valor_maximo_absoluto_matriz1 <- as.numeric(quantile(abs(so_etmr1$matriz1), 0.99))
+valor_maximo_absoluto_matriz1  
+valor_maximo_absoluto_matriz2 <- max(abs(so_etmr1$matriz2)) 
+valor_maximo_absoluto_matriz2
+
+# aunque los limites sean 2 y 3, vemos que es el cluster 16 el que expresa 2.76207499 de media pero el resto menos de 1. 
+# por eso, pongo el limite en 1
+```
+
+```{r, message=FALSE}
+truncar_valores <- function(x, min_val, max_val) {
+  pmin(pmax(x, min_val), max_val)
+}
+
+limite1 <- c(0, 1)
+so_etmr1$matriz1_truncada <- truncar_valores(so_etmr1$matriz1, limite1[1], limite1[2])
+FeaturePlot(so_etmr1, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular ko")
+
+limite2 <- c(0, 1)
+so_etmr1$matriz2_truncada <- truncar_valores(so_etmr1$matriz2, limite2[1], limite2[2])
+FeaturePlot(so_etmr1, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters ko")
+```
+
+
+```{r}
+p1 <- FeaturePlot(so_etmr1, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1)) & 
+  ggtitle("Expresión celular")
+ggsave("resultados_etmr1/KO_matriz1_genes_rafa.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("resultados_etmr1/pdfs/KO_matriz1_genes_rafa.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- FeaturePlot(so_etmr1, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1)) & 
+  ggtitle("Expresión clusters")
+ggsave("resultados_etmr1/KO_matriz2_genes_rafa.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("resultados_etmr1/pdfs/KO_matriz2_genes_rafa.pdf", plot = p2, width = 8, height = 6)
+```
+
+Para sacar los colores que hemos usado para el monocle3:
+```{r}
+limite_inferior <- 0
+limite_superior <- 1
+
+matriz2 <- matriz2 %>%
+  mutate(valor_truncado = pmin(pmax(matriz2, limite_inferior), limite_superior))
+
+paleta_base <- rev(brewer.pal(11, "RdBu"))
+paleta_fun <- scales::gradient_n_pal(paleta_base, values = NULL, space = "Lab")
+
+matriz2 <- matriz2 %>%
+  mutate(color_hex = paleta_fun(scales::rescale(valor_truncado, to = c(0, 1))))
+
+# comprobación de los colores
+ggplot(matriz2, aes(x = factor(seurat_clusters), y = 1, fill = color_hex)) +
+  geom_tile(color = "black") +
+  scale_fill_identity() +
+  labs(title = "Colores exactos del FeaturePlot", x = "Cluster", y = "") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank())
+FeaturePlot(
+  so_etmr1,
+  features = "matriz2_truncada"
+) &
+  scale_color_gradientn(colors = paleta_base, limits = c(0, 1)) &
+  ggtitle("FeaturePlot con la escala reproducida")
+
+
+write.csv(matriz2, "colores_matriz2.csv", row.names = FALSE)
+matriz2 <- read.csv("colores_matriz2.csv")
+```
+
+
+```{r}
+for (gene in markers_etmr_rafa) {
+plot <- VlnPlot(so_etmr1, features = gene, pt.size = 0) + 
+  theme(axis.title = element_text(size = 10), 
+          axis.text = element_text(size = 8),        
+          legend.text = element_text(size = 8),      
+          legend.title = element_text(size = 9),     
+          plot.title = element_text(size = 12)) +
+  scale_fill_manual(values = rep("#FFF68F", length(unique(Idents(so_etmr1)))))+
+  NoLegend()
+
+ggsave(filename = paste0("resultados_etmr1/violin_plot_etmr1", gene, ".png"), 
+       plot = plot, 
+       width = 8, height = 6)
+
+ggsave(filename = paste0("resultados_etmr1/pdfs/violin_plot_etmr1", gene, ".pdf"), 
+       plot = plot, 
+       width = 8, height = 6)
+}
+```
+
+## feature plots 
+```{r}
+FeaturePlot(so_etmr1, features = markers_etmr_rafa, ncol = 3)
+
+for (gene in markers_etmr_rafa) {
+  p <- FeaturePlot(so_etmr1, features = gene) +
+    ggtitle(paste("Feature plot:", gene))
+  
+  # Guardar el plot como PNG
+  ggsave(
+    filename = paste0("resultados_etmr1/", gene, "_FeaturePlot.png"),
+    plot = p,
+    width = 6,
+    height = 5,
+    dpi = 300
+  )
+}
+
+```
+
+
+
+
+
+# monocle3
+
+```{r}
+so_etmr1_anotado_3d <- RunUMAP(
+  so_etmr1, 
+  dims = 1:30, 
+  reduction = "pca", 
+  reduction.name = "umap.3d", 
+  n.components = 3
+)
+
+cds_etmr1 <- as.cell_data_set(so_etmr1_anotado_3d)
+
+## Crear partición dummy (1 para todas las células)
+recreate.partition <- c(rep(1, ncol(cds_etmr1)))
+names(recreate.partition) <- colnames(cds_etmr1)
+recreate.partition <- as.factor(recreate.partition)
+cds_etmr1@clusters$UMAP$partitions <- recreate.partition
+
+## Pasar clústeres de Seurat anotados
+cds_etmr1@clusters$UMAP$clusters <- so_etmr1_anotado_3d$cell_types_etmr1
+
+# Pasamos las coordenadas del umap hecho con solo las ko
+cds_etmr1@int_colData@listData$reducedDims$UMAP <- so_etmr1_anotado_3d@reductions$umap.3d@cell.embeddings
+
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "cell_types_etmr1")
+htmlwidgets::saveWidget(p3d, "cell_types_etmr1.html")
+
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "cell_types_2_etmr1")
+htmlwidgets::saveWidget(p3d, "cell_types_2_etmr1.html")
+```
+
+
+# trayectorias 3d
+
+```{r}
+cds_etmr1 <- learn_graph(cds_etmr1)
+
+
+# 16
+ordenar_desde_clusters <- function(cds, cluster_names, colname = "cell_types_etmr1", seed = 123) {
+  set.seed(seed)
+  all_clusters <- unique(cds@colData[[colname]])
+  missing_clusters <- setdiff(cluster_names, all_clusters)
+  if (length(missing_clusters) > 0) {
+    stop(paste("Clúster(es) no encontrados:", paste(missing_clusters, collapse = ", ")))
+  }
+  root_cells <- unlist(lapply(cluster_names, function(cluster) {
+    cells_in_cluster <- colnames(cds)[cds@colData[[colname]] == cluster]
+    sample(cells_in_cluster, 1)
+  }))
+  cat("Células raíz seleccionadas:\n", paste(root_cells, collapse = ", "), "\n")
+  cds <- order_cells(cds, root_cells = root_cells)
+  return(cds)
+}
+clusters_raiz <- c("16.RDG_cyling_signature")
+cds_etmr1 <- ordenar_desde_clusters(cds_etmr1, clusters_raiz)
+
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "pseudotime")
+htmlwidgets::saveWidget(p3d, "trayectorias_monocle3_etmr1_16.html")
+
+cds_etmr1$pseudotime <- pseudotime(cds_etmr1)  ## guardamos los valores pseudotime
+metadata_cds_etmr1 <- as.data.frame(colData(cds_etmr1))
+p1 <- ggplot(metadata_cds_etmr1, 
+       aes(pseudotime, reorder(cell_types_etmr1, pseudotime, mean), fill = cell_types_etmr1)) + 
+  geom_boxplot()
+
+ggsave("resultados_etmr1/umap_3d/trayectorias_monocle3/pseudotiempo_etmr1_16.png", plot = p1, width = 14, height = 10, dpi = 300)
+
+
+# 7
+ordenar_desde_clusters <- function(cds, cluster_names, colname = "cell_types_etmr1", seed = 123) {
+  set.seed(seed)
+  all_clusters <- unique(cds@colData[[colname]])
+  missing_clusters <- setdiff(cluster_names, all_clusters)
+  if (length(missing_clusters) > 0) {
+    stop(paste("Clúster(es) no encontrados:", paste(missing_clusters, collapse = ", ")))
+  }
+  root_cells <- unlist(lapply(cluster_names, function(cluster) {
+    cells_in_cluster <- colnames(cds)[cds@colData[[colname]] == cluster]
+    sample(cells_in_cluster, 1)
+  }))
+  cat("Células raíz seleccionadas:\n", paste(root_cells, collapse = ", "), "\n")
+  cds <- order_cells(cds, root_cells = root_cells)
+  return(cds)
+}
+clusters_raiz <- c("7.RDG_cyling")
+cds_etmr1 <- ordenar_desde_clusters(cds_etmr1, clusters_raiz)
+
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "pseudotime")
+htmlwidgets::saveWidget(p3d, "trayectorias_monocle3_etmr1_7.html")
+
+cds_etmr1@colData$cell_types_etmr1 <- as.character(cds_etmr1@colData$cell_types_etmr1)
+
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "cell_types_etmr1")
+htmlwidgets::saveWidget(p3d, "esqueleto_cell_types_etmr1.html")
+
+cds_etmr1$pseudotime <- pseudotime(cds_etmr1)  ## guardamos los valores pseudotime
+metadata_cds_etmr1 <- as.data.frame(colData(cds_etmr1))
+p1 <- ggplot(metadata_cds_etmr1, 
+       aes(pseudotime, reorder(cell_types_etmr1, pseudotime, mean), fill = cell_types_etmr1)) + 
+  geom_boxplot()
+
+ggsave("pseudotiempo_etmr1_7.png", plot = p1, width = 14, height = 10, dpi = 300)
+
+
+saveRDS(cds_etmr1, file = "cds_etmr1.rds")
+cds_etmr1 <- readRDS('cds_etmr1.rds')
+
+
+```
+
+
+
+
+# trayectorias 2d
+
+```{r}
+cds_etmr1 <- as.cell_data_set(so_etmr1)
+recreate.partition <- c(rep(1, ncol(cds_etmr1)))
+names(recreate.partition) <- colnames(cds_etmr1)
+recreate.partition <- as.factor(recreate.partition)
+cds_etmr1@clusters$UMAP$partitions <- recreate.partition
+cds_etmr1@clusters$UMAP$clusters <- so_etmr1$cell_types_etmr1
+cds_etmr1@int_colData@listData$reducedDims$UMAP <- so_etmr1@reductions$umap@cell.embeddings
+plot_cells(cds_etmr1)
+cds_etmr1 <- learn_graph(cds_etmr1)
+plot_cells(cds_etmr1,
+           label_groups_by_cluster = TRUE,
+           label_leaves = FALSE,
+           label_branch_points = FALSE)
+```
+
+
+```{r}
+cds_ko2 <- choose_graph_segments(cds_etmr1)
+```
+
+## monocle3 y trayectorias quitando microglia
+
+```{r}
+cells_keep <- rownames(so_etmr1@meta.data)[
+  !so_etmr1@meta.data$cell_types_etmr1 %in% c("13.Microglia", "18.Microglia")
+]
+so_etmr1_sin_micro <- subset(so_etmr1, cells = cells_keep)
+
+p1 <- DimPlot(so_etmr1_sin_micro, reduction = "umap.unintegrated")
+selected_cells <- CellSelector(p1)
+so_etmr1_sin_micro <- subset(so_etmr1_sin_micro, cells = setdiff(Cells(so_etmr1_sin_micro), selected_cells))
+
+
+so_etmr1_anotado_3d <- RunUMAP(
+  so_etmr1_sin_micro, 
+  dims = 1:30, 
+  reduction = "pca", 
+  reduction.name = "umap.3d", 
+  n.components = 3
+)
+
+cds_etmr1 <- as.cell_data_set(so_etmr1_anotado_3d)
+
+## Crear partición dummy (1 para todas las células)
+recreate.partition <- c(rep(1, ncol(cds_etmr1)))
+names(recreate.partition) <- colnames(cds_etmr1)
+recreate.partition <- as.factor(recreate.partition)
+cds_etmr1@clusters$UMAP$partitions <- recreate.partition
+
+## Pasar clústeres de Seurat anotados
+cds_etmr1@clusters$UMAP$clusters <- so_etmr1_anotado_3d$cell_types_etmr1
+
+# Pasamos las coordenadas del umap hecho con solo las ko
+cds_etmr1@int_colData@listData$reducedDims$UMAP <- so_etmr1_anotado_3d@reductions$umap.3d@cell.embeddings
+
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "cell_types_etmr1")
+htmlwidgets::saveWidget(p3d, "cell_types_etmr1.html")
+
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "cell_types_2_etmr1")
+htmlwidgets::saveWidget(p3d, "cell_types_2_etmr1.html")
+```
+
+
+```{r}
+cds_etmr1 <- learn_graph(cds_etmr1)
+
+# 16
+ordenar_desde_clusters <- function(cds, cluster_names, colname = "cell_types_etmr1", seed = 123) {
+  set.seed(seed)
+  all_clusters <- unique(cds@colData[[colname]])
+  missing_clusters <- setdiff(cluster_names, all_clusters)
+  if (length(missing_clusters) > 0) {
+    stop(paste("Clúster(es) no encontrados:", paste(missing_clusters, collapse = ", ")))
+  }
+  root_cells <- unlist(lapply(cluster_names, function(cluster) {
+    cells_in_cluster <- colnames(cds)[cds@colData[[colname]] == cluster]
+    sample(cells_in_cluster, 1)
+  }))
+  cat("Células raíz seleccionadas:\n", paste(root_cells, collapse = ", "), "\n")
+  cds <- order_cells(cds, root_cells = root_cells)
+  return(cds)
+}
+clusters_raiz <- c("16.RDG_cyling_signature")
+cds_etmr1 <- ordenar_desde_clusters(cds_etmr1, clusters_raiz)
+
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "pseudotime")
+htmlwidgets::saveWidget(p3d, "trayectorias_monocle3_etmr1_16.html")
+
+cds_etmr1@colData$cell_types_etmr1 <- as.character(cds_etmr1@colData$cell_types_etmr1)
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "cell_types_etmr1")
+htmlwidgets::saveWidget(p3d, "cell_types_etmr1.html")
+
+cds_etmr1@colData$cell_types_2_etmr1 <- as.character(cds_etmr1@colData$cell_types_2_etmr1)
+p3d <- plot_cells_3d(cds_etmr1, color_cells_by = "cell_types_2_etmr1")
+htmlwidgets::saveWidget(p3d, "cell_types_2_etmr1.html")
+
+cds_etmr1$pseudotime <- pseudotime(cds_etmr1)  ## guardamos los valores pseudotime
+metadata_cds_etmr1 <- as.data.frame(colData(cds_etmr1))
+p1 <- ggplot(metadata_cds_etmr1, 
+       aes(pseudotime, reorder(cell_types_etmr1, pseudotime, mean), fill = cell_types_etmr1)) + 
+  geom_boxplot()
+
+ggsave("resultados_etmr1/umap_3d/trayectorias_monocle3/pseudotiempo_etmr1_16.png", plot = p1, width = 14, height = 10, dpi = 300)
+
+
+saveRDS(cds_etmr1, file = "cds_etmr1_sin_micro.rds")
+cds_etmr1 <- readRDS('cds_etmr1_sin_micro.rds')
+```
+
+
+# guardado objeto anotado
+
+```{r}
+saveRDS(so_etmr1, "so_etmr1_annotated.rds")
+so_etmr1 <- readRDS("so_etmr1_annotated.rds")
+```
+
+
+
+# . 
+
+
+# creamos objeto etmr1 para integrar con dicer
+
+```{r}
+# objeto etmr1 postfiltrado pero no analizado:
+so_etmr1 <- readRDS("so_etmr1_postfiltered.rds")
+```
+
+```{r}
+so_etmr1
+```
+
+## paso de genes humanos a raton
+
+```{r}
+genes_ortologos <- read.table("signature/orthologs_final_human_mouse.tsv")
+genes_ortologos <- genes_ortologos[,1:2]
+colnames(genes_ortologos) <- c("humano", "raton")
+```
+
+```{r}
+human_counts <- GetAssayData(so_etmr1, layer = "counts")
+common_genes <- intersect(rownames(human_counts), genes_ortologos$humano)
+human_counts <- human_counts[common_genes, ]
+matched_idx <- match(rownames(human_counts), genes_ortologos$humano)
+converted_names <- genes_ortologos[matched_idx, "raton"]
+rownames(human_counts) <- converted_names
+```
+
+```{r}
+so_etmr1_mouse <- CreateSeuratObject(counts = human_counts)
+so_etmr1_mouse
+```
+
+```{r}
+rm(list = setdiff(ls(), c("so_etmr1_mouse")))
+```
+
+
+## añadimos la notación
+
+```{r}
+so_etmr1_anotado <- readRDS("so_etmr1_annotated.rds")
+```
+
+```{r}
+so_etmr1_mouse$sample_origin <- "etmr1"
+so_etmr1_mouse$condition <- "etmr1"
+so_etmr1_mouse$species <- "human"
+
+# cell_types_etmr1
+names_in_merge <- Cells(so_etmr1_anotado)
+cell_types_vector <- so_etmr1_anotado$cell_types_etmr1[match(Cells(so_etmr1_mouse), names_in_merge)]
+names(cell_types_vector) <- Cells(so_etmr1_mouse)
+so_etmr1_mouse <- AddMetaData(so_etmr1_mouse, metadata = cell_types_vector, col.name = "cell_types_etmr1")
+
+# cell_types_2_etmr1
+names_in_merge <- gsub("^so_12_CX_KO_", "", Cells(so_etmr1_anotado))
+cell_types_vector <- so_etmr1_anotado$cell_types_2_etmr1[match(Cells(so_etmr1_mouse), names_in_merge)]
+names(cell_types_vector) <- Cells(so_etmr1_mouse)
+so_etmr1_mouse <- AddMetaData(so_etmr1_mouse, metadata = cell_types_vector, col.name = "cell_types_2_etmr1")
+
+# cell_types_2
+so_etmr1_mouse$cell_types_2 <- so_etmr1_mouse$cell_types_2_etmr1
+
+# cell_types_2_species
+so_etmr1_mouse@meta.data$cell_types_2_species <- paste(
+  as.character(so_etmr1_mouse@meta.data$cell_types_2),
+  as.character(so_etmr1_mouse@meta.data$species),
+  sep = "_"
+)
+
+# cell_types_species
+so_etmr1_mouse$cell_types <- so_etmr1_mouse$cell_types_etmr1
+so_etmr1_mouse@meta.data$cell_types_species <- paste(
+  as.character(so_etmr1_mouse@meta.data$cell_types),
+  as.character(so_etmr1_mouse@meta.data$species),
+  sep = "_"
+)
+so_etmr1_mouse$cell_types <- NULL
+```
+
+
+## guardado objeto etmr1 para integración dicer
+
+Objeto con genes ratón con notación y etiquetas pero no analizado:
+
+```{r}
+saveRDS(so_etmr1_mouse, "so_etmr1_mouse.rds")
+so_etmr1_mouse <- readRDS("so_etmr1_mouse.rds")
+```
+
+
+
+
+# creamos objeto etmr1 para integrar con tejido humano sano
+
+
+```{r}
+# objeto etmr1 postfiltrado pero no analizado:
+so_etmr1 <- readRDS("so_etmr1_postfiltered.rds")
+```
+
+```{r}
+so_etmr1
+```
+
+## añadimos la notación
+
+```{r}
+so_etmr1_anotado <- readRDS("so_etmr1_annotated.rds")
+```
+
+```{r}
+so_etmr1$sample_origin <- "etmr1"
+so_etmr1$condition <- "etmr1"
+so_etmr1$species <- "human"
+so_etmr1$Age <- "etmr1_21_months_old"
+so_etmr1$Age_range <- "etmr1_21_months_old"
+so_etmr1$Region <- "etmr1_posterior_fossa"
+so_etmr1$Subregion <- "etmr1_posterior_fossa"
+so_etmr1$donor_id <- "etmr1"
+
+ meta1 <- so_etmr1@meta.data
+ meta2 <- so_etmr1_anotado@meta.data
+
+# cell_types_etmr1
+names_in_merge <- Cells(so_etmr1_anotado)
+cell_types_vector <- so_etmr1_anotado$cell_types_etmr1[match(Cells(so_etmr1), names_in_merge)]
+names(cell_types_vector) <- Cells(so_etmr1)
+so_etmr1 <- AddMetaData(so_etmr1, metadata = cell_types_vector, col.name = "cell_types_etmr1")
+
+# cell_types_2_etmr1
+names_in_merge <- gsub("^so_12_CX_KO_", "", Cells(so_etmr1_anotado))
+cell_types_vector <- so_etmr1_anotado$cell_types_2_etmr1[match(Cells(so_etmr1), names_in_merge)]
+names(cell_types_vector) <- Cells(so_etmr1)
+so_etmr1 <- AddMetaData(so_etmr1, metadata = cell_types_vector, col.name = "cell_types_2_etmr1")
+
+# cell_types_2
+so_etmr1$cell_types_2 <- so_etmr1$cell_types_2_etmr1
+
+# cell_types_2_condition
+so_etmr1@meta.data$cell_types_2_condition <- paste(
+  as.character(so_etmr1@meta.data$cell_types_2),
+  as.character(so_etmr1@meta.data$condition),
+  sep = "_"
+)
+
+# cell_types_condition
+so_etmr1$cell_types <- so_etmr1$cell_types_etmr1
+so_etmr1@meta.data$cell_types_condition <- paste(
+  as.character(so_etmr1@meta.data$cell_types),
+  as.character(so_etmr1@meta.data$condition),
+  sep = "_"
+)
+so_etmr1$cell_types <- NULL
+
+
+# phase
+names_in_merge <- Cells(so_etmr1_anotado)
+cell_types_vector <- so_etmr1_anotado$Phase[match(Cells(so_etmr1), names_in_merge)]
+names(cell_types_vector) <- Cells(so_etmr1)
+so_etmr1 <- AddMetaData(so_etmr1, metadata = cell_types_vector, col.name = "Phase")
+
+```
+
+
+
+## guardado objeto etmr1 para integración humano sano
+
+Objeto con genes humanos con notación y etiquetas pero no analizado:
+
+```{r}
+saveRDS(so_etmr1, "so_etmr1_human.rds")
+so_etmr1 <- readRDS("so_etmr1_human.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,64 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+#DO NOT LOAD TIDYVERSE, LEAVE AS IS
+library(reticulate)
+
+use_python("/home/sofia/miniconda3/bin/python", required = TRUE) #magic spell and absolute cornerstone
+
+
+library(here)
+source(paste0(here::here(), "/defaria/scripts/functions.R")) 
+
+library(anndata)
+library(dplyr)
+library(tibble)
+library(Seurat)
+library(SeuratDisk)
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(clustree)
+
+
+```
+
+```{r}
+py_require(c("anndata"))
+# #convert = TRUE To turn python objects into native R objects
+ad <- import("anndata", convert = TRUE)
+
+etmr_ad <- read_h5ad("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/snrna_data_leiden.h5ad")
+```
+
+```{r}
+etmr <- convert_to_seurat(etmr_ad)
+```
+
+```{r}
+
+cluster_keys <- c("orig.ident",
+                  "nCount_RNA",
+                  "nFeature_RNA",
+                  "n_genes_by_counts",
+                  "total_counts",
+                  "total_counts_mt",
+                  "pct_counts_mt",
+                  "Sample_ID",
+                  "leiden_r0.5_n30_pc50",
+ "leiden_r0.7_n30_pc50",
+ "leiden_r1.0_n30_pc50",
+ "leiden_r1.2_n30_pc50",
+ "leiden_r1.5_n30_pc50")
+
+objeto_clustree <- etmr@meta.data[, cluster_keys, drop = FALSE])
+
+p1 <- clustree(objeto_clustree, prefix = "leiden_r", suffix= "_n30_pc50")
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/clusters/clustree.png", p1)
+
+```
+

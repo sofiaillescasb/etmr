@@ -156,24 +156,34 @@ lapply(names(pp_lst), function(x) ggsave(filename = paste0("/home/sofia/Projects
 ```
 
 ```{r}
-plot_hist <- function(umapdf, x, colvar, integration) {
 
-  h <- umapdf %>%
-    ggplot(aes(x = get(x),  fill = get(colvar))) +
-    geom_bar(position = "fill") +
-    theme_classic() +
-    ggtitle(paste(colvar, integration)) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    labs(x = x, fill = colvar) 
-  
-  return(h)
-}
 
 #hacer histogramas
+hist_lst <- list()
+
 for (u in names(snrna.data@meta.data)[-c(1:10)]) {
-  umapdf <- cbind()
+  umapdf <- data.frame(cell = rownames(snrna.data@meta.data), 
+                       ID = snrna.data@meta.data$orig.ident, 
+                       Cluster = snrna.data@meta.data[[u]])
+  pp <- umapdf %>%
+    ggplot(aes(x = Cluster,  fill = ID)) +
+    geom_bar(position = "fill") +
+    theme_classic() +
+    ggtitle(paste0("Sample composition ",u))+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+  hist_lst[[u]] <- pp
 }
 
+  
+lapply(names(hist_lst), function(x) ggsave(filename = paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/clusters/histograms/seurat/", x, ".png"), hist_lst[[x]], width = 8, height = 6, unit = "in"))
+```
 
+```{r}
 
+```
+
+```{r}
+ggsave("results_12_cx/merge/clustree_plot_12_cx.png", plot = p1, width = 12, height = 14)
+ggsave("results_12_cx/merge/pdfs/clustree_plot_12_cx.pdf", plot = p1, width = 12, height = 14)
 ```
