@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r, warning = FALSE, message = FALSE}
 library(dplyr)
 library(Seurat)
-library(DropletQC)
+#library(DropletQC)
 library(Matrix)
 library(SoupX)
 library(presto)
@@ -45,7 +45,7 @@ library(pheatmap)
 
 # soupX
 
-```{r}
+```{r, eval=FALSE}
 # KO
 data_etmr1 <- load10X("//10.128.4.102/omics/Analyzed_data/SinglecellRNAseq_mouse_AnnaPrieto_SoledadPerez/data/Jessa/Jessa_cellranger/ETMR1/outs")
 data_etmr1 <- autoEstCont(data_etmr1)
@@ -54,7 +54,7 @@ data_etmr1 <- adjustCounts(data_etmr1, roundToInt=TRUE)
 
 # dropletQC
 
-```{r}
+```{r, eval=FALSE}
 nf_data_etmr1 <- nuclear_fraction_tags("//10.128.4.102/omics/Analyzed_data/SinglecellRNAseq_mouse_AnnaPrieto_SoledadPerez/data/Jessa/Jessa_cellranger/ETMR1/outs", tiles = 1, cores = 8, verbose = FALSE)
 write.csv(nf_data_etmr1, "nf_data_etmr1.csv")
 nf_data_etmr1 <- read.csv("nf_data_etmr1.csv")
@@ -62,31 +62,31 @@ nf_data_etmr1 <- read.csv("nf_data_etmr1.csv")
 
 # creamos el seurat objects
 
-```{r}
+```{r, eval=FALSE}
 so_etmr1 <- CreateSeuratObject(counts = data_etmr1)
 so_etmr1
 ```
 
-```{r}
+```{r, eval=FALSE}
 genes_expresados_1 <- rowSums(so_etmr1@assays$RNA@layers$counts) > 0
 so_etmr1 <- subset(so_etmr1, features = rownames(so_etmr1)[genes_expresados_1])
 ```
 
-```{r}
+```{r, eval=FALSE}
 so_etmr1
 ```
 
 
 # etiquetamos las muestras
 
-```{r}
+```{r,  eval=FALSE}
 so_etmr1$sample_origin <- "etmr1"
 ```
 
 
 # QC
 
-```{r}
+```{r, eval=FALSE}
 so_etmr1$percent.mt <- PercentageFeatureSet(so_etmr1, pattern = "^MT-")
 
 mean(so_etmr1$percent.mt)
@@ -100,7 +100,7 @@ p1 <- VlnPlot(object = so_etmr1, features = feats, pt.size = 0.01, ncol = 5) + N
 p1
 ```
 
-```{r}
+```{r, eval=FALSE}
 feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo", "nf")
 y_limits <- list(
   c(0, 12000),
@@ -144,7 +144,7 @@ ggsave("resultados_etmr1/QC/pdfs/QC_vlnplot_etmr1_prefiltrado.pdf", plot = combi
 
 # guardado objetos prefiltrado
 
-```{r}
+```{r, eval=FALSE}
 saveRDS(so_etmr1, "so_etmr1_prefiltered.rds")
 so_etmr1 <- readRDS("so_etmr1_prefiltered.rds")
 ```
@@ -153,7 +153,7 @@ so_etmr1 <- readRDS("so_etmr1_prefiltered.rds")
 
 # filtrado
 
-```{r}
+```{r, eval=FALSE}
 so_etmr1
 so_etmr1 <- subset(so_etmr1,
                    subset = nFeature_RNA > 200 &
@@ -165,7 +165,7 @@ so_etmr1
 
 # QC postfiltrado
 
-```{r}
+```{r,  eval=FALSE}
 so_etmr1$percent.mt <- PercentageFeatureSet(so_etmr1, pattern = "^MT-")
 
 mean(so_etmr1$percent.mt)
@@ -179,7 +179,7 @@ p1 <- VlnPlot(object = so_etmr1, features = feats, pt.size = 0.01, ncol = 5) + N
 p1
 ```
 
-```{r}
+```{r,  eval=FALSE}
 feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo", "nf")
 y_limits <- list(
   c(0, 12000),
@@ -224,13 +224,13 @@ ggsave("resultados_etmr1/QC/pdfs/QC_vlnplot_etmr1_postfiltrado.pdf", plot = comb
 
 # guardado objetos postfiltrado
 
-```{r}
+```{r, eval=FALSE}
 saveRDS(so_etmr1, "so_etmr1_postfiltered.rds")
 so_etmr1 <- readRDS("so_etmr1_postfiltered.rds")
 ```
 
 ```{r}
-so_etmr1
+so_etmr1 <- readRDS("/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/so_etmr1_postfiltered.rds")
 ```
 
 # normalizamos
@@ -273,7 +273,7 @@ so_etmr1 <- RunUMAP(so_etmr1, dims = 1:30, reduction = "pca", reduction.name = "
 ```
 
 Guardamos el num cels clusters:
-```{r}
+```{r, eval=FALSE}
 tabla_clusters <- table(so_etmr1@meta.data$seurat_clusters)
 print(tabla_clusters)
 tabla_clusters <- as.data.frame(tabla_clusters)
@@ -305,8 +305,8 @@ table(so_etmr1@meta.data[["Phase"]])
 # guardado objetos analizados
 
 ```{r}
-saveRDS(so_etmr1, "so_etmr1_analyzed.rds")
-so_etmr1 <- readRDS("so_etmr1_analyzed.rds")
+saveRDS(so_etmr1, "/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/so_etmr1_analyzed.rds")
+so_etmr1 <- readRDS("/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/so_etmr1_analyzed.rds")
 ```
 
 
@@ -319,13 +319,13 @@ cluster_names <- levels(so_etmr1@meta.data$seurat_clusters)
 for (i in cluster_names) {
   markers <- FindMarkers(so_etmr1, ident.1 = i, only.pos = TRUE)
   df_name <- paste("markers", i, sep = "_")
-  write.csv(markers, paste("resultados_etmr1/markers_etmr1/", df_name, ".csv", sep = ""), row.names = TRUE)
+  write.csv(markers, paste("/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/resultados_etmr1/markers_etmr1/", df_name, ".csv", sep = ""), row.names = TRUE)
 }
 ```
 
 
 ```{r}
-csv_folder <- "resultados_etmr1/markers_etmr1/"
+csv_folder <- "/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/resultados_etmr1/markers_etmr1/"
 csv_files <- list.files(path = csv_folder, pattern = "\\.csv$", full.names = TRUE)
 file_names <- gsub("\\.csv$", "", basename(csv_files))
 ordered_indices <- order(as.numeric(gsub("markers_", "", file_names)))
@@ -346,11 +346,11 @@ markers_dataframe_etmr1 <- as.data.frame(markers_dataframe_etmr1)
 colnames(markers_dataframe_etmr1) <- tools::file_path_sans_ext(basename(csv_files))
 rm(csv_files, csv_folder)
 
-write.csv(markers_dataframe_etmr1, "resultados_etmr1/markers_etmr1/top50_pos_markers_etmr1.csv", row.names = FALSE)
-markers_dataframe_etmr1 <- read.csv("resultados_etmr1/markers_etmr1/top50_pos_markers_etmr1.csv")
+write.csv(markers_dataframe_etmr1, "/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/resultados_etmr1/markers_etmr1/top50_pos_markers_etmr1.csv", row.names = FALSE)
+markers_dataframe_etmr1 <- read.csv("/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/resultados_etmr1/markers_etmr1/top50_pos_markers_etmr1.csv")
 ```
 
-```{r}
+```{r, eval = FALSE}
 markers_16 <- FindMarkers(so_etmr1, ident.1 = "16.RDG_cyling_signature", only.pos = TRUE)
 markers_16 <- markers_16[markers_16$p_val_adj < 0.05, ]
 
@@ -401,32 +401,22 @@ markers_etmr1_genes <- markers_etmr1_filt %>%
   ungroup()
 
 
-cluster_names <- data.frame(
-  ClusterNumber = seq_along(levels(so_etmr1@meta.data[["cluster_cell_type_phase"]])) - 1,
-  ClusterName = levels(so_etmr1@meta.data[["cluster_cell_type_phase"]])
-)
-
-markers_etmr1_genes <- markers_etmr1_genes %>%
-  left_join(cluster_names, by = "ClusterNumber") %>%
-  select(ClusterNumber, ClusterName, Top20Genes)
-
-
 
 write.csv(
   markers_etmr1,
-  "resultados/marcadores/markers_etmr1_full.csv",
+  "/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/resultados_etmr1/markers_etmr1/markers_etmr1_full.csv",
   row.names = FALSE
 )
 
 write.csv(
   markers_etmr1_filt,
-  "resultados/marcadores/markers_etmr1_filtered_top20.csv",
+  "/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/resultados_etmr1/markers_etmr1/markers_etmr1_filtered_top20.csv",
   row.names = FALSE
 )
 
 write.csv(
   markers_etmr1_genes,
-  "resultados/marcadores/markers_etmr1_top20genes_justnames.csv",
+  "/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/resultados_etmr1/markers_etmr1/markers_etmr1_top20genes_justnames.csv",
   row.names = FALSE
 )
 ```
@@ -494,7 +484,7 @@ markers_list <- list(
 
 ```{r}
 save_marker_featureplots(
-  output_dir = "resultados/marcadores/",
+  output_dir = "/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/resultados_etmr1/markers_etmr1/",
   seurat_obj = so_etmr1,
   markers_list = markers_list
 )
@@ -606,6 +596,7 @@ scCustomize::Clustered_DotPlot(
   plot_km_elbow = FALSE, 
   colors_use_exp = colorRampPalette(c("blue", "white", "red"))(20)
 )
+
 ```
 
 ```{r}

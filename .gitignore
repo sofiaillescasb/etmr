@@ -22,3 +22,5 @@ de Faria/snRNA/scripts/snrna.data
 *.xlsx
 *.jpeg
 *.png
+*.h5
+*.rds
