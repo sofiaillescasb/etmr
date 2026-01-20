@@ -1,0 +1,1346 @@
+---
+title: "etmr1_braun"
+output: html_document
+date: "2025-09-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# librerias
+
+```{r, warning = FALSE, message = FALSE}
+library(dplyr)
+library(Seurat)
+library(DropletQC)
+library(Matrix)
+library(SoupX)
+library(presto)
+library(openxlsx)
+library(gprofiler2)
+library(ggplot2)
+library(glmGamPoi)
+library(scCustomize)
+library(ComplexHeatmap)
+library(RColorBrewer)
+library(speckle)
+library(limma)
+library(ggplot2)
+library(ggrepel)
+library(patchwork)
+library(monocle3)
+library(SeuratWrappers)
+library(clustree)
+library(tibble)
+library(readxl)
+library(grid)
+library(gridExtra)
+library(ggtext)
+library(reshape2)
+library(pheatmap)
+library(harmony)
+library(tidyr)
+library(gt)
+```
+
+
+
+# objetos
+
+```{r}
+so_etmr1 <- readRDS("objects/initial_objects/so_etmr1_human.rds")
+so_sub_1 <- readRDS("objects/initial_objects/so_sub_1_braun_int.rds")
+```
+
+```{r}
+so_etmr1
+so_sub_1
+```
+
+
+# filtrando los genes
+
+```{r}
+genes_comunes <- intersect(rownames(so_sub_1), rownames(so_etmr1))
+
+so_etmr1 <- subset(so_etmr1, features = genes_comunes)
+so_sub_1 <- subset(so_sub_1, features = genes_comunes)
+```
+
+```{r}
+so_etmr1
+so_sub_1
+```
+
+
+# guardamos los objetos
+
+```{r}
+saveRDS(so_etmr1, "so_inicial_etmr1_human.rds")
+saveRDS(so_sub_1, "so_inicial_sub_1_braun.rds")
+```
+
+```{r}
+so_etmr1 <- readRDS("so_inicial_etmr1_human.rds")
+so_sub_1 <- readRDS("so_inicial_sub_1_braun.rds")
+```
+
+#.
+# unintegrated
+
+```{r}
+so_etmr1_sub_1_unintegrated <- merge(so_sub_1, y = so_etmr1, 
+                                    add.cell.ids = c("braun", "etmr1"))
+so_etmr1_sub_1_unintegrated
+```
+
+```{r}
+so_etmr1_sub_1_unintegrated <- JoinLayers(so_etmr1_sub_1_unintegrated)
+```
+
+```{r}
+Layers(so_etmr1_sub_1_unintegrated[["RNA"]])
+```
+
+
+# standard workflow
+
+```{r}
+so_etmr1_sub_1_unintegrated <- NormalizeData(so_etmr1_sub_1_unintegrated, 
+                                         normalization.method = "LogNormalize", 
+                                         scale.factor = 10000)
+
+so_etmr1_sub_1_unintegrated <- FindVariableFeatures(so_etmr1_sub_1_unintegrated, selection.method = "vst", nfeatures = 2000)
+
+so_etmr1_sub_1_unintegrated <- ScaleData(so_etmr1_sub_1_unintegrated)
+
+so_etmr1_sub_1_unintegrated <- RunPCA(so_etmr1_sub_1_unintegrated, features = VariableFeatures(object = so_etmr1_sub_1_unintegrated))
+
+ElbowPlot(so_etmr1_sub_1_unintegrated, reduction = "pca", ndims = 50)
+
+so_etmr1_sub_1_unintegrated <- FindNeighbors(so_etmr1_sub_1_unintegrated, dims = 1:30, reduction = "pca")
+
+so_etmr1_sub_1_unintegrated <- FindClusters(so_etmr1_sub_1_unintegrated, resolution = 0.8, cluster.name = "unintegrated_clusters")
+
+so_etmr1_sub_1_unintegrated <- RunUMAP(so_etmr1_sub_1_unintegrated, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
+```
+
+
+
+# graficos umap
+
+```{r}
+DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "sample_origin")
+DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "condition")
+DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "Age")
+DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "cell_types_2")
+DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "Region")
+DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "Subregion")
+```
+
+```{r}
+dir.create("results/unintegrated/pdfs", recursive = TRUE, showWarnings = FALSE)
+
+g <- DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "sample_origin")
+ggsave("results/unintegrated/pdfs/umap_sample_origin.pdf", g, width = 8, height = 6)
+ggsave("results/unintegrated/umap_sample_origin.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "condition")
+ggsave("results/unintegrated/pdfs/umap_condition.pdf", g, width = 8, height = 6)
+ggsave("results/unintegrated/umap_condition.png", g, width = 8, height = 6, dpi = 300)
+
+
+g <- DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "Age")
+ggsave("results/unintegrated/pdfs/umap_Age.pdf", g, width = 8, height = 6)
+ggsave("results/unintegrated/umap_Age.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "cell_types_2")
+ggsave("results/unintegrated/pdfs/umap_cell_types_2.pdf", g, width = 8, height = 6)
+ggsave("results/unintegrated/umap_cell_types_2.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "Region")
+ggsave("results/unintegrated/pdfs/umap_Region.pdf", g, width = 8, height = 6)
+ggsave("results/unintegrated/umap_Region.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_unintegrated, reduction = "umap.unintegrated", group.by = "Subregion")
+ggsave("results/unintegrated/pdfs/umap_Subregion.pdf", g, width = 8, height = 6)
+ggsave("results/unintegrated/umap_Subregion.png", g, width = 8, height = 6, dpi = 300)
+```
+
+# guardado objeto unintegrated
+
+```{r}
+saveRDS(so_etmr1_sub_1_unintegrated, "so_etmr1_sub_1_unintegrated.rds")
+so_etmr1_sub_1_unintegrated <- readRDS("so_etmr1_sub_1_unintegrated.rds")
+```
+
+
+
+
+
+# . 
+#  v5: harmony
+
+
+```{r}
+so_etmr1_sub_1_int_harmony <- so_etmr1_sub_1_unintegrated
+```
+
+```{r}
+so_etmr1_sub_1_int_harmony[["RNA"]] <- split(so_etmr1_sub_1_int_harmony[["RNA"]], f = so_etmr1_sub_1_int_harmony$sample_origin)
+so_etmr1_sub_1_int_harmony
+```
+
+
+# standard workflow
+
+```{r}
+so_etmr1_sub_1_int_harmony <- NormalizeData(so_etmr1_sub_1_int_harmony,
+                                         normalization.method = "LogNormalize", 
+                                         scale.factor = 10000)
+
+so_etmr1_sub_1_int_harmony <- FindVariableFeatures(so_etmr1_sub_1_int_harmony, selection.method = "vst", nfeatures = 2000)
+
+so_etmr1_sub_1_int_harmony <- ScaleData(so_etmr1_sub_1_int_harmony)
+
+so_etmr1_sub_1_int_harmony <- RunPCA(so_etmr1_sub_1_int_harmony, features = VariableFeatures(object = so_etmr1_sub_1_int_harmony))
+
+ElbowPlot(so_etmr1_sub_1_int_harmony, reduction = "pca", ndims = 50)
+```
+
+```{r}
+so_etmr1_sub_1_int_harmony <- IntegrateLayers(
+  object = so_etmr1_sub_1_int_harmony,
+  method = HarmonyIntegration,
+  orig.reduction = "pca",
+  new.reduction = "harmony",
+  verbose = FALSE
+)
+```
+
+```{r}
+so_etmr1_sub_1_int_harmony <- JoinLayers(so_etmr1_sub_1_int_harmony)
+```
+
+```{r}
+so_etmr1_sub_1_int_harmony <- FindNeighbors(so_etmr1_sub_1_int_harmony, reduction = "harmony", dims = 1:30)
+so_etmr1_sub_1_int_harmony <- FindClusters(so_etmr1_sub_1_int_harmony, resolution = 0.8)
+so_etmr1_sub_1_int_harmony <- RunUMAP(so_etmr1_sub_1_int_harmony, reduction = "harmony", dims = 1:30)
+```
+
+# graficos umaps
+
+
+
+```{r}
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", label = T)
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "donor_id")
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "sample_origin")
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "condition")
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "Age")
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "cell_types_2")
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "Region")
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "Subregion")
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "Subregion")
+DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "cell_types_etmr1", label = T)
+```
+
+
+```{r}
+dir.create("results/integrated/harmony/pdfs", recursive = TRUE, showWarnings = FALSE)
+
+g <- DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", label = TRUE)
+ggsave("results/integrated/harmony/pdfs/umap_label.pdf", g, width = 8, height = 6)
+ggsave("results/integrated/harmony/umap_label.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "donor_id")
+ggsave("results/integrated/harmony/pdfs/umap_donor_id.pdf", g, width = 8, height = 6)
+ggsave("results/integrated/harmony/umap_donor_id.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "sample_origin")
+ggsave("results/integrated/harmony/pdfs/umap_sample_origin.pdf", g, width = 8, height = 6)
+ggsave("results/integrated/harmony/umap_sample_origin.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "condition")
+ggsave("results/integrated/harmony/pdfs/umap_condition.pdf", g, width = 8, height = 6)
+ggsave("results/integrated/harmony/umap_condition.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "Age")
+ggsave("results/integrated/harmony/pdfs/umap_Age.pdf", g, width = 8, height = 6)
+ggsave("results/integrated/harmony/umap_Age.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "cell_types_2")
+ggsave("results/integrated/harmony/pdfs/umap_cell_types_2.pdf", g, width = 8, height = 6)
+ggsave("results/integrated/harmony/umap_cell_types_2.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "Region")
+ggsave("results/integrated/harmony/pdfs/umap_Region.pdf", g, width = 8, height = 6)
+ggsave("results/integrated/harmony/umap_Region.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "Subregion")
+ggsave("results/integrated/harmony/pdfs/umap_Subregion.pdf", g, width = 8, height = 6)
+ggsave("results/integrated/harmony/umap_Subregion.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_int_harmony, reduction = "umap", group.by = "cell_types_etmr1", label = TRUE, label.size = 2.4)
+ggsave("results/integrated/harmony/pdfs/umap_cell_types_etmr1.pdf", g, width = 8, height = 6)
+ggsave("results/integrated/harmony/umap_cell_types_etmr1.png", g, width = 8, height = 6, dpi = 300)
+```
+
+# proporciones
+
+```{r}
+meta <- so_etmr1_sub_1_int_harmony@meta.data
+
+table(meta$condition)
+table(meta$Age, useNA = "ifany")
+table(meta$Age)
+table(meta$seurat_clusters)
+
+unique(meta$cell_types_etmr1)
+```
+
+```{r}
+table(so_etmr1_sub_1_int_harmony@meta.data$seurat_clusters[so_etmr1_sub_1_int_harmony@meta.data$cell_types_etmr1 == "0.RDG_cyling"])
+table(so_etmr1_sub_1_int_harmony@meta.data$condition[so_etmr1_sub_1_int_harmony@meta.data$seurat_clusters == 27])
+
+table(so_etmr1_sub_1_int_harmony@meta.data$seurat_clusters[so_etmr1_sub_1_int_harmony@meta.data$cell_types_etmr1 == "1.RDG"])
+table(so_etmr1_sub_1_int_harmony@meta.data$condition[so_etmr1_sub_1_int_harmony@meta.data$seurat_clusters == 0])
+```
+
+```{r}
+age_levels <- c("5", "8", "11.5", "14")
+
+df_summary <- meta %>%
+  filter(condition == "etmr1") %>%
+  group_by(cell_types_etmr1) %>%
+  summarise(
+    n_total_etmr1 = n(),
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(
+    top_cluster = {
+      counts <- table(meta$seurat_clusters[meta$cell_types_etmr1 == cell_types_etmr1])
+      names(counts)[which.max(counts)]
+    },
+    n_etmr1_in_cluster = {
+      counts <- table(meta$seurat_clusters[meta$cell_types_etmr1 == cell_types_etmr1])
+      max(counts)
+    },
+    perc_etmr1_in_cluster = round(100 * n_etmr1_in_cluster / n_total_etmr1, 2),
+    n_normal_in_cluster = sum(meta$condition == "normal_tissue" &
+                                meta$seurat_clusters == top_cluster)
+  ) %>%
+  rowwise() %>%
+  mutate(
+    age_df = list({
+      subset_norm <- meta %>%
+        filter(condition == "normal_tissue", seurat_clusters == top_cluster)
+      
+      if (nrow(subset_norm) == 0) {
+        tibble(
+          Age = age_levels,
+          n = rep(0, length(age_levels)),
+          perc = rep(0, length(age_levels))
+        )
+      } else {
+        counts <- table(factor(subset_norm$Age,
+                               levels = age_levels))
+        total <- sum(counts)
+        tibble(
+          Age = names(counts),
+          n = as.vector(counts),
+          perc = if (total > 0) round(100 * counts / total, 2) else rep(0, length(counts))
+        )
+      }
+    })
+  ) %>%
+  unnest(age_df) %>%
+  pivot_wider(
+    id_cols = c(cell_types_etmr1, n_total_etmr1, top_cluster,
+                n_etmr1_in_cluster, perc_etmr1_in_cluster, n_normal_in_cluster),
+    names_from = Age,
+    values_from = c(n, perc),
+    names_sep = "_"
+  )
+rm(age_levels)
+print(df_summary)
+```
+
+```{r}
+pdf("df_summary.pdf", width = 16, height = 9)  # ajusta tamaño según columnas/filas
+grid.table(df_summary, rows = NULL, theme = ttheme_default(base_size = 8))
+dev.off()
+```
+
+
+# guardado objeto integrado
+
+```{r}
+saveRDS(so_etmr1_sub_1_int_harmony, "so_etmr1_sub_1_int_harmony.rds")
+so_etmr1_sub_1_int_harmony <- readRDS("so_etmr1_sub_1_int_harmony.rds")
+```
+
+
+```{r}
+rm(list = ls())
+```
+
+
+# . 
+# downsampling analysis
+
+# metodo balanceado
+
+## objetos
+
+```{r}
+so_etmr1 <- readRDS("objects/initial_objects/so_etmr1_human.rds")
+so_sub_1_balanced <- readRDS("objects/initial_objects/so_sub_1_balanced_braun_int.rds")
+```
+
+```{r}
+so_etmr1
+so_sub_1_balanced
+```
+
+ 
+## filtrando los genes
+
+```{r}
+genes_comunes <- intersect(rownames(so_sub_1_balanced), rownames(so_etmr1))
+
+so_etmr1 <- subset(so_etmr1, features = genes_comunes)
+so_sub_1_balanced <- subset(so_sub_1_balanced, features = genes_comunes)
+```
+
+```{r}
+so_etmr1
+so_sub_1_balanced
+```
+
+
+## guardamos los objetos
+
+```{r}
+saveRDS(so_etmr1, "so_inicial_etmr1_human_down.rds")
+saveRDS(so_sub_1_balanced, "so_inicial_sub_1_balanced_braun.rds")
+```
+
+```{r}
+so_etmr1 <- readRDS("so_inicial_etmr1_human_down.rds")
+so_sub_1_balanced <- readRDS("so_inicial_sub_1_balanced_braun.rds")
+```
+
+
+## unintegrated
+
+```{r}
+so_etmr1_sub_1_balanced_unintegrated <- merge(so_sub_1_balanced, y = so_etmr1, 
+                                    add.cell.ids = c("braun", "etmr1"))
+so_etmr1_sub_1_balanced_unintegrated
+```
+
+```{r}
+so_etmr1_sub_1_balanced_unintegrated <- JoinLayers(so_etmr1_sub_1_balanced_unintegrated)
+```
+
+```{r}
+Layers(so_etmr1_sub_1_balanced_unintegrated[["RNA"]])
+```
+
+
+## standard workflow
+
+```{r}
+so_etmr1_sub_1_balanced_unintegrated <- NormalizeData(so_etmr1_sub_1_balanced_unintegrated, 
+                                         normalization.method = "LogNormalize", 
+                                         scale.factor = 10000)
+
+so_etmr1_sub_1_balanced_unintegrated <- FindVariableFeatures(so_etmr1_sub_1_balanced_unintegrated, selection.method = "vst", nfeatures = 2000)
+
+so_etmr1_sub_1_balanced_unintegrated <- ScaleData(so_etmr1_sub_1_balanced_unintegrated)
+
+so_etmr1_sub_1_balanced_unintegrated <- RunPCA(so_etmr1_sub_1_balanced_unintegrated, features = VariableFeatures(object = so_etmr1_sub_1_balanced_unintegrated))
+
+ElbowPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "pca", ndims = 50)
+
+so_etmr1_sub_1_balanced_unintegrated <- FindNeighbors(so_etmr1_sub_1_balanced_unintegrated, dims = 1:30, reduction = "pca")
+
+so_etmr1_sub_1_balanced_unintegrated <- FindClusters(so_etmr1_sub_1_balanced_unintegrated, resolution = 0.8, cluster.name = "unintegrated_clusters")
+
+so_etmr1_sub_1_balanced_unintegrated <- RunUMAP(so_etmr1_sub_1_balanced_unintegrated, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
+```
+
+
+
+## graficos umap
+
+```{r}
+DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "sample_origin")
+DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "condition")
+DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "Age")
+DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "cell_types_2")
+DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "Region")
+DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "Subregion")
+```
+
+```{r}
+dir.create("results/downsampling/balanced/unintegrated/pdfs", recursive = TRUE, showWarnings = FALSE)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "sample_origin")
+ggsave("results/downsampling/balanced/unintegrated/pdfs/umap_sample_origin.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/unintegrated/umap_sample_origin.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "condition")
+ggsave("results/downsampling/balanced/unintegrated/pdfs/umap_condition.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/unintegrated/umap_condition.png", g, width = 8, height = 6, dpi = 300)
+
+
+g <- DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "Age")
+ggsave("results/downsampling/balanced/unintegrated/pdfs/umap_Age.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/unintegrated/umap_Age.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "cell_types_2")
+ggsave("results/downsampling/balanced/unintegrated/pdfs/umap_cell_types_2.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/unintegrated/umap_cell_types_2.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "Region")
+ggsave("results/downsampling/balanced/unintegrated/pdfs/umap_Region.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/unintegrated/umap_Region.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_unintegrated, reduction = "umap.unintegrated", group.by = "Subregion")
+ggsave("results/downsampling/balanced/unintegrated/pdfs/umap_Subregion.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/unintegrated/umap_Subregion.png", g, width = 8, height = 6, dpi = 300)
+```
+
+
+
+## guardado objeto unintegrated
+
+```{r}
+saveRDS(so_etmr1_sub_1_balanced_unintegrated, "so_etmr1_sub_1_balanced_unintegrated.rds")
+#so_etmr1_sub_1_balanced_unintegrated <- readRDS("so_etmr1_sub_1_balanced_unintegrated.rds")
+```
+
+
+
+
+##  v5: harmony
+
+```{r}
+so_etmr1_sub_1_balanced_int_harmony <- so_etmr1_sub_1_balanced_unintegrated
+```
+
+```{r}
+so_etmr1_sub_1_balanced_int_harmony[["RNA"]] <- split(so_etmr1_sub_1_balanced_int_harmony[["RNA"]], f = so_etmr1_sub_1_balanced_int_harmony$sample_origin)
+so_etmr1_sub_1_balanced_int_harmony
+```
+
+
+## standard workflow
+
+```{r}
+so_etmr1_sub_1_balanced_int_harmony <- NormalizeData(so_etmr1_sub_1_balanced_int_harmony,
+                                         normalization.method = "LogNormalize", 
+                                         scale.factor = 10000)
+
+so_etmr1_sub_1_balanced_int_harmony <- FindVariableFeatures(so_etmr1_sub_1_balanced_int_harmony, selection.method = "vst", nfeatures = 2000)
+
+so_etmr1_sub_1_balanced_int_harmony <- ScaleData(so_etmr1_sub_1_balanced_int_harmony)
+
+so_etmr1_sub_1_balanced_int_harmony <- RunPCA(so_etmr1_sub_1_balanced_int_harmony, features = VariableFeatures(object = so_etmr1_sub_1_balanced_int_harmony))
+
+ElbowPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "pca", ndims = 50)
+```
+
+```{r}
+so_etmr1_sub_1_balanced_int_harmony <- IntegrateLayers(
+  object = so_etmr1_sub_1_balanced_int_harmony,
+  method = HarmonyIntegration,
+  orig.reduction = "pca",
+  new.reduction = "harmony",
+  verbose = FALSE
+)
+```
+
+```{r}
+so_etmr1_sub_1_balanced_int_harmony <- JoinLayers(so_etmr1_sub_1_balanced_int_harmony)
+```
+
+```{r}
+so_etmr1_sub_1_balanced_int_harmony <- FindNeighbors(so_etmr1_sub_1_balanced_int_harmony, reduction = "harmony", dims = 1:30)
+so_etmr1_sub_1_balanced_int_harmony <- FindClusters(so_etmr1_sub_1_balanced_int_harmony, resolution = 0.8)
+so_etmr1_sub_1_balanced_int_harmony <- RunUMAP(so_etmr1_sub_1_balanced_int_harmony, reduction = "harmony", dims = 1:30)
+```
+
+## graficos umaps
+
+```{r}
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", label = T)
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "donor_id")
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "sample_origin")
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "condition")
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "Age")
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "cell_types_2")
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "Region")
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "Subregion")
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "Subregion")
+DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "cell_types_etmr1", label = T)
+```
+
+```{r}
+dir.create("results/downsampling/balanced/integrated/harmony/pdfs", recursive = TRUE, showWarnings = FALSE)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", label = TRUE)
+ggsave("results/downsampling/balanced/integrated/harmony/pdfs/umap_label.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/integrated/harmony/umap_label.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "donor_id")
+ggsave("results/downsampling/balanced/integrated/harmony/pdfs/umap_donor_id.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/integrated/harmony/umap_donor_id.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "sample_origin")
+ggsave("results/downsampling/balanced/integrated/harmony/pdfs/umap_sample_origin.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/integrated/harmony/umap_sample_origin.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "condition")
+ggsave("results/downsampling/balanced/integrated/harmony/pdfs/umap_condition.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/integrated/harmony/umap_condition.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "Age")
+ggsave("results/downsampling/balanced/integrated/harmony/pdfs/umap_Age.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/integrated/harmony/umap_Age.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "cell_types_2")
+ggsave("results/downsampling/balanced/integrated/harmony/pdfs/umap_cell_types_2.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/integrated/harmony/umap_cell_types_2.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "Region")
+ggsave("results/downsampling/balanced/integrated/harmony/pdfs/umap_Region.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/integrated/harmony/umap_Region.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "Subregion")
+ggsave("results/downsampling/balanced/integrated/harmony/pdfs/umap_Subregion.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/integrated/harmony/umap_Subregion.png", g, width = 8, height = 6, dpi = 300)
+
+g <- DimPlot(so_etmr1_sub_1_balanced_int_harmony, reduction = "umap", group.by = "cell_types_etmr1", label = TRUE, label.size = 2.4)
+ggsave("results/downsampling/balanced/integrated/harmony/pdfs/umap_cell_types_etmr1.pdf", g, width = 8, height = 6)
+ggsave("results/downsampling/balanced/integrated/harmony/umap_cell_types_etmr1.png", g, width = 8, height = 6, dpi = 300)
+```
+
+
+## proporciones
+
+```{r}
+meta <- so_etmr1_sub_1_balanced_int_harmony@meta.data
+
+table(meta$condition)
+table(meta$Age, useNA = "ifany")
+type(meta$Age)
+table(meta$seurat_clusters)
+
+unique(meta$cell_types_etmr1)
+```
+
+```{r}
+table(so_etmr1_sub_1_balanced_int_harmony@meta.data$seurat_clusters[so_etmr1_sub_1_balanced_int_harmony@meta.data$cell_types_etmr1 == "0.RDG_cyling"])
+table(so_etmr1_sub_1_balanced_int_harmony@meta.data$condition[so_etmr1_sub_1_balanced_int_harmony@meta.data$seurat_clusters == 27])
+
+table(so_etmr1_sub_1_balanced_int_harmony@meta.data$seurat_clusters[so_etmr1_sub_1_balanced_int_harmony@meta.data$cell_types_etmr1 == "1.RDG"])
+table(so_etmr1_sub_1_balanced_int_harmony@meta.data$condition[so_etmr1_sub_1_balanced_int_harmony@meta.data$seurat_clusters == 0])
+```
+
+```{r}
+age_levels <- c("5", "8", "11.5", "14")
+
+df_summary <- meta %>%
+  filter(condition == "etmr1") %>%
+  group_by(cell_types_etmr1) %>%
+  summarise(
+    n_total_etmr1 = n(),
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(
+    top_cluster = {
+      counts <- table(meta$seurat_clusters[meta$cell_types_etmr1 == cell_types_etmr1])
+      names(counts)[which.max(counts)]
+    },
+    n_etmr1_in_cluster = {
+      counts <- table(meta$seurat_clusters[meta$cell_types_etmr1 == cell_types_etmr1])
+      max(counts)
+    },
+    perc_etmr1_in_cluster = round(100 * n_etmr1_in_cluster / n_total_etmr1, 2),
+    n_normal_in_cluster = sum(meta$condition == "normal_tissue" &
+                                meta$seurat_clusters == top_cluster)
+  ) %>%
+  rowwise() %>%
+  mutate(
+    age_df = list({
+      subset_norm <- meta %>%
+        filter(condition == "normal_tissue", seurat_clusters == top_cluster)
+      
+      if (nrow(subset_norm) == 0) {
+        tibble(
+          Age = age_levels,
+          n = rep(0, length(age_levels)),
+          perc = rep(0, length(age_levels))
+        )
+      } else {
+  counts <- as.numeric(table(factor(subset_norm$Age, levels = age_levels)))
+  total <- sum(counts)
+  tibble(
+    Age = age_levels,
+    n = counts,
+    perc = if (total > 0) round(100 * counts / total, 2) else rep(0, length(counts))
+  )
+}
+    })
+  ) %>%
+  unnest(age_df) %>%
+  pivot_wider(
+    id_cols = c(cell_types_etmr1, n_total_etmr1, top_cluster,
+                n_etmr1_in_cluster, perc_etmr1_in_cluster, n_normal_in_cluster),
+    names_from = Age,
+    values_from = c(n, perc),
+    names_sep = "_"
+  )
+rm(age_levels)
+```
+
+```{r}
+dir.create("results/downsampling/balanced/integrated/harmony/tables", recursive = TRUE, showWarnings = FALSE)
+
+write.csv(df_summary, file = "results/downsampling/balanced/integrated/harmony/tables/df_summary_etmr1_clusters.csv", row.names = FALSE)
+df_summary_loaded <- read.csv("results/downsampling/balanced/integrated/harmony/tables/df_summary_etmr1_clusters.csv")
+```
+
+```{r}
+pdf("df_summary.pdf", width = 16, height = 9)  # ajusta tamaño según columnas/filas
+grid.table(df_summary, rows = NULL, theme = ttheme_default(base_size = 8))
+dev.off()
+```
+
+## guardado objeto integrado
+
+```{r}
+saveRDS(so_etmr1_sub_1_balanced_int_harmony, "so_etmr1_sub_1_balanced_int_harmony.rds")
+so_etmr1_sub_1_balanced_int_harmony <- readRDS("so_etmr1_sub_1_balanced_int_harmony.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# . 
+
+# figuras paper
+
+
+```{r}
+so_etmr1_sub_1_int_harmony$Age <- factor(so_etmr1_sub_1_int_harmony$Age, 
+                                         levels = c("5", "8", "11.5", "14", "etmr1_21_months_old"))
+
+colores <- c("11.5" = "#8DB6CD", "14" = "#D1EEEE", "5" = "#FFAEB9", "8" = "#d62728", "etmr1_21_months_old" = "black")  # rojo o negro de referencia
+
+g <- DimPlot(
+  so_etmr1_sub_1_int_harmony, 
+  reduction = "umap", 
+  group.by = "Age", 
+  cols = colores
+)
+g
+```
+
+las guardo:
+
+```{r}
+paletas <- list(
+  combo1 = c("11.5" = "#8DB6CD", "14" = "#D1EEEE", "5" = "#FFAEB9", "8" = "#d62728", "etmr1_21_months_old" = "black"),
+  combo2 = c("11.5" = "#FFEC8B", "14" = "#FFFFE0", "5" = "#B0E2FF", "8" = "#BF3EFF", "etmr1_21_months_old" = "black"),
+  combo3 = c("11.5" = "#EEA2AD", "14" = "#FFFFE0", "5" = "#BCD2EE", "8" = "#8DB6CD", "etmr1_21_months_old" = "black"),
+  combo4 = c("11.5" = "#B0E2FF", "14" = "#FFEC8B", "5" = "#FFAEB9", "8" = "#E0EEE0", "etmr1_21_months_old" = "black"),
+  combo5 = c("11.5" = "#BF3EFF", "14" = "#C1FFC1", "5" = "#FF7256", "8" = "#EEE685", "etmr1_21_months_old" = "black")
+)
+
+for (nombre in names(paletas)) {
+  
+  colores <- paletas[[nombre]]
+  
+  g <- DimPlot(
+    so_etmr1_sub_1_int_harmony, 
+    reduction = "umap", 
+    group.by = "Age", 
+    cols = colores,
+    raster = TRUE
+  ) + ggtitle(NULL)
+  
+  pdf_file <- paste0("umap_", nombre, ".pdf")
+  png_file <- paste0("umap_", nombre, ".png")
+  
+  ggplot2::ggsave(pdf_file, plot = g, width = 8, height = 6)
+  ggplot2::ggsave(png_file, plot = g, width = 8, height = 6, dpi = 300)
+  
+  message("Guardado: ", pdf_file, " y ", png_file)
+}
+
+```
+
+
+Para superponer el las celulas etmr1_21_months_old:
+
+```{r}
+# Seleccionar celdas de ese grupo
+cells_etmr1 <- WhichCells(
+  so_etmr1_sub_1_int_harmony,
+  expression = Age == "etmr1_21_months_old"
+)
+
+# Coordenadas
+coords <- Embeddings(so_etmr1_sub_1_int_harmony, "umap")[cells_etmr1, , drop = FALSE]
+df_etmr1 <- data.frame(UMAP_1 = coords[,1], UMAP_2 = coords[,2])
+
+# Paleta elegida (ejemplo: combo5)
+colores <- c(
+  "11.5" = "#BF3EFF",
+  "14" = "#C1FFC1",
+  "5" = "#FF7256",
+  "8" = "#EEE685",
+  "etmr1_21_months_old" = "black"
+)
+
+p <- DimPlot(
+  so_etmr1_sub_1_int_harmony,
+  reduction = "umap",
+  group.by = "Age",
+  raster = TRUE,
+  cols = colores
+)
+
+p_final <- p + ggplot2::geom_point(
+  data = df_etmr1,
+  mapping = ggplot2::aes(UMAP_1, UMAP_2),
+  inherit.aes = FALSE,
+  size = 0.0001, alpha = 0.2, color = colores["etmr1_21_months_old"]
+) + ggtitle(NULL)
+
+p_final
+
+```
+
+
+Bucle para todas las combis de colores:
+
+```{r}
+# 1) Celdas a resaltar
+cells_etmr1 <- WhichCells(
+  so_etmr1_sub_1_int_harmony,
+  expression = Age == "etmr1_21_months_old"
+)
+
+# 2) Coordenadas
+coords <- Embeddings(so_etmr1_sub_1_int_harmony, "umap")[cells_etmr1, , drop = FALSE]
+df_etmr1 <- data.frame(UMAP_1 = coords[,1], UMAP_2 = coords[,2])
+
+# 3) Lista de paletas personalizadas
+paletas <- list(
+  combo1 = c("11.5" = "#8DB6CD", "14" = "#D1EEEE", "5" = "#FFAEB9", "8" = "#d62728", "etmr1_21_months_old" = "black"),
+  combo2 = c("11.5" = "#FFEC8B", "14" = "#FFFFE0", "5" = "#B0E2FF", "8" = "#BF3EFF", "etmr1_21_months_old" = "black"),
+  combo3 = c("11.5" = "#EEA2AD", "14" = "#FFFFE0", "5" = "#BCD2EE", "8" = "#8DB6CD", "etmr1_21_months_old" = "black"),
+  combo4 = c("11.5" = "#B0E2FF", "14" = "#FFEC8B", "5" = "#FFAEB9", "8" = "#E0EEE0", "etmr1_21_months_old" = "black"),
+  combo5 = c("11.5" = "#BF3EFF", "14" = "#C1FFC1", "5" = "#FF7256", "8" = "#EEE685", "etmr1_21_months_old" = "black")
+)
+
+# 4) Bucle para todas las figuras
+for (nombre in names(paletas)) {
+  
+  colores <- paletas[[nombre]]
+  
+  p <- DimPlot(
+    so_etmr1_sub_1_int_harmony,
+    reduction = "umap",
+    group.by = "Age",
+    raster = TRUE,
+    cols = colores
+  )
+  
+  p_final <- p + ggplot2::geom_point(
+    data = df_etmr1,
+    mapping = ggplot2::aes(UMAP_1, UMAP_2),
+    inherit.aes = FALSE,
+    size = 0.001, alpha = 0.3, color = colores["etmr1_21_months_old"]
+  ) + ggtitle(NULL)
+  
+  pdf_file <- paste0("umap_overlay_", nombre, ".pdf")
+  png_file <- paste0("umap_overlay_", nombre, ".png")
+  
+  ggplot2::ggsave(pdf_file, plot = p_final, width = 8, height = 6)
+  ggplot2::ggsave(png_file, plot = p_final, width = 8, height = 6, dpi = 300)
+  
+  message("Guardado: ", pdf_file, " y ", png_file)
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# . 
+
+# analisis de similitud 1
+
+# proporciones - porcentajes
+
+
+```{r}
+meta <- so_etmr1_sub_1_int_harmony@meta.data
+meta$Age <- factor(meta$Age, levels = c("5", "8" , "11.5", "14", "etmr1_21_months_old"),
+                   labels = c("age5", "age8" , "age11.5", "age14", "etmr1_21_months_old"))
+#table(meta$condition)
+#table(meta$Age, useNA = "ifany")
+#table(meta$Age, useNA = "ifany")
+#table(meta$seurat_clusters)
+
+#unique(meta$cell_types_etmr1)
+```
+
+```{r}
+addmargins(table(meta$seurat_clusters, meta$Age))
+
+#round(addmargins(prop.table(table(meta$seurat_clusters, meta$Age))),3)
+#round(addmargins(prop.table(table(meta$seurat_clusters, meta$Age), margin = 1)),3)
+round(addmargins(prop.table(table(meta$seurat_clusters, meta$Age), margin = 2)),3)
+```
+
+```{r}
+prop <- meta %>%
+  group_by(Age, seurat_clusters) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(Age) %>%
+  mutate(proportion = n / sum(n))
+# haciendolo asi la proporcion significa:
+# numero celulas en condicionA y clusterX / num celulas condicionA
+
+p2 <- ggplot(prop, aes(x = seurat_clusters, y = proportion, fill = Age)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  xlab("Cluster") +
+  labs(fill = "Age") +
+  theme_minimal()
+p2
+
+rm(p2)
+```
+
+
+```{#r}
+p3 <- ggplot(prop, aes(x = seurat_clusters, y = proportion, fill = Age)) +
+  geom_bar(stat = "identity", position = "fill") +
+  xlab("Cluster") +
+  labs(fill = "Age") +
+  theme_minimal()
+p3
+
+rm(p3)
+```
+
+
+
+
+```{r}
+prop_wide <- prop %>%
+  select(Age, seurat_clusters, proportion) %>%
+  pivot_wider(names_from = Age, values_from = proportion)
+
+prop_wide <- prop_wide %>%
+  mutate(
+    sim_age5 = 2 * pmin(age5, etmr1_21_months_old) / (age5 + etmr1_21_months_old),
+    sim_age8 = 2 * pmin(age8, etmr1_21_months_old) / (age8 + etmr1_21_months_old),
+    sim_age11.5 = 2 * pmin(age11.5, etmr1_21_months_old) / (age11.5 + etmr1_21_months_old),
+    sim_age14= 2 * pmin(age14, etmr1_21_months_old) / (age14 + etmr1_21_months_old)
+  )
+
+```
+
+Rellenamos los NA por 0:
+```{r}
+prop_wide <- prop_wide %>%
+  mutate(across(everything(), ~ ifelse(is.na(.), 0, .)))
+```
+
+
+Guardamos la tabla:
+```{r}
+prop_wide_table <- prop_wide %>%
+  mutate(seurat_clusters = as.numeric(seurat_clusters)) %>%
+  arrange(seurat_clusters)
+
+prop_wide_table <- prop_wide_table %>%
+  rename_with(~ paste0("prop_", .x), 
+              c("age5", "age8", "age11.5", "age14", "etmr1_21_months_old"))
+
+write.csv(prop_wide_table, file = "prop_wide_etmr1_sub_1.csv")
+```
+
+
+## media global
+
+```{r}
+media_global <- prop_wide %>%
+  summarise(
+    media_5 = mean(sim_age5, na.rm = TRUE),
+    media_8 = mean(sim_age8, na.rm = TRUE),
+    media_11.5 = mean(sim_age11.5, na.rm = TRUE),
+    media_14 = mean(sim_age14, na.rm = TRUE)
+  )
+media_global
+```
+
+## media ponderada por números reales (cuentas n)
+
+```{r}
+n_wide <- prop %>%
+  select(Age, seurat_clusters, n) %>%
+  pivot_wider(
+    names_from = Age,
+    values_from = n,
+    names_prefix = "n_"
+  )
+```
+
+```{r}
+media_ponderada_n <- prop_wide %>%
+  left_join(n_wide, by = "seurat_clusters") %>%
+  mutate(
+    w_5 = n_age5 + n_etmr1_21_months_old,
+    w_8 = n_age8 + n_etmr1_21_months_old,
+    w_11.5 = n_age11.5 + n_etmr1_21_months_old,
+    w_14 = n_age14 + n_etmr1_21_months_old
+  ) %>%
+  summarise(
+    media_5 = weighted.mean(sim_age5, w_5, na.rm = TRUE),
+    media_8 = weighted.mean(sim_age8, w_8, na.rm = TRUE),
+    media_11.5 = weighted.mean(sim_age11.5, w_11.5, na.rm = TRUE),
+    media_14 = weighted.mean(sim_age14, w_14, na.rm = TRUE)
+  )
+media_ponderada_n
+```
+
+
+
+
+## media ponderada proporciones
+
+```{r}
+media_ponderada_p <- prop_wide %>%
+  mutate(
+    w_5 = (age5 + etmr1_21_months_old) / 2,
+    w_8 = (age8 + etmr1_21_months_old) / 2,
+    w_11.5 = (age11.5 + etmr1_21_months_old) / 2,
+    w_14 = (age14 + etmr1_21_months_old) / 2
+  ) %>%
+  summarise(
+    media_5 = weighted.mean(sim_age5, w_5, na.rm = TRUE),
+    media_8 = weighted.mean(sim_age8, w_8, na.rm = TRUE),
+    media_11.5 = weighted.mean(sim_age11.5, w_11.5, na.rm = TRUE),
+    media_14 = weighted.mean(sim_age14, w_14, na.rm = TRUE)
+  )
+media_ponderada_p
+```
+
+
+
+## sorensen-dice
+
+```{r}
+dice <- prop_wide %>%
+  summarise(
+    dice_5 = sum(pmin(age5, etmr1_21_months_old), na.rm = TRUE),
+    dice_8 = sum(pmin(age8, etmr1_21_months_old), na.rm = TRUE),
+    dice_11.5 = sum(pmin(age11.5, etmr1_21_months_old), na.rm = TRUE),
+    dice_14 = sum(pmin(age14, etmr1_21_months_old), na.rm = TRUE)
+  )
+dice
+```
+
+
+
+
+
+## por condiciones
+
+```{r}
+media_ponderada_tumor <- prop_wide %>%
+  summarise(
+    sim_tumor_5 = weighted.mean(sim_age5, etmr1_21_months_old, na.rm = TRUE),
+    sim_tumor_8 = weighted.mean(sim_age8, etmr1_21_months_old, na.rm = TRUE),
+    sim_tumor_11.5 = weighted.mean(sim_age11.5, etmr1_21_months_old, na.rm = TRUE),
+    sim_tumor_14 = weighted.mean(sim_age14, etmr1_21_months_old, na.rm = TRUE)
+  )
+
+media_ponderada_tumor
+
+
+media_ponderada_edad <- prop_wide %>%
+  summarise(
+    sim_edad_5 = weighted.mean(sim_age5, age5, na.rm = TRUE),
+    sim_edad_8 = weighted.mean(sim_age8, age8, na.rm = TRUE),
+    sim_edad_11.5 = weighted.mean(sim_age11.5, age11.5, na.rm = TRUE),
+    sim_edad_14 = weighted.mean(sim_age14, age14, na.rm = TRUE)
+  )
+media_ponderada_edad
+```
+
+
+
+```{r}
+media_ponderada_min <- prop_wide %>%
+  mutate(
+    w_5 = pmin(age5, etmr1_21_months_old),
+    w_8 = pmin(age8, etmr1_21_months_old),
+    w_11.5 = pmin(age11.5, etmr1_21_months_old),
+    w_14 = pmin(age14, etmr1_21_months_old)
+  ) %>%
+  summarise(
+    media_5 = weighted.mean(sim_age5, w_5, na.rm = TRUE),
+    media_8 = weighted.mean(sim_age8, w_8, na.rm = TRUE),
+    media_11.5 = weighted.mean(sim_age11.5, w_11.5, na.rm = TRUE),
+    media_14 = weighted.mean(sim_age14, w_14, na.rm = TRUE)
+  )
+media_ponderada_min
+```
+
+
+
+Nos quedamos con ponderación por la proporción del tumor:
+
+sim_tumor_5
+<dbl>
+sim_tumor_8
+<dbl>
+sim_tumor_11.5
+<dbl>
+sim_tumor_14
+<dbl>
+0.693904	0.570589	0.3795406	0.2595211	
+
+
+
+## histograma
+```{r}
+media_ponderada_tumor <- media_ponderada_tumor %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Edad",
+    values_to = "Valor"
+  ) 
+
+media_ponderada_tumor$Edad <- c("Age5", "Age8", "Age11.5", "Age14")
+media_ponderada_tumor$Edad <- factor(media_ponderada_tumor$Edad, 
+                                     levels = c("Age5", "Age8", "Age11.5", "Age14"))
+```
+
+
+```{r}
+g <- ggplot(media_ponderada_tumor, aes(x = Edad, y = Valor, fill = Edad)) +
+  geom_bar(stat = "identity", width = 1) +  # sin hueco entre barras
+  geom_text(aes(label = paste0(round(Valor * 100, 1), "%")), 
+            vjust = -0.3, size = 5) +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal(base_size = 14) +
+  scale_fill_manual(values = c("Age11.5" = "#BF3EFF", "Age14" = "#C1FFC1", "Age5" = "#FF7256", "Age8" = "#EEE685")) + 
+  theme(
+    legend.position = "none",
+    axis.title = element_blank()
+  )
+g
+```
+
+
+```{#r}
+ggsave("media_ponderada_tumor.pdf", plot = g, width = 6, height = 10, units = "in")
+ggsave("media_ponderada_tumor.png", plot = g, width = 6, height = 10, units = "in", dpi = 300)
+```
+
+
+
+
+# . 
+
+# analisis de similitud 2 
+
+# paper victor
+
+```{r}
+condition  <- as.character(so_etmr1_sub_4_int_harmony$condition)    
+age  <- as.character(so_etmr1_sub_4_int_harmony$Age)
+cell_ids   <- colnames(so_etmr1_sub_4_int_harmony)
+
+is_tumor  <- condition == "etmr1"
+is_normal <- condition == "normal_tissue"
+tumor_cells  <- cell_ids[is_tumor]
+normal_cells <- cell_ids[is_normal]
+
+age_levels_normal <- sort(unique(age[is_normal]))
+```
+
+```{r}
+names(so_etmr1_sub_4_int_harmony@graphs)
+snn <- so_etmr1_sub_4_int_harmony@graphs$RNA_snn
+```
+
+```{r}
+age_map <- setNames(age, cell_ids)
+
+prox_matrix <- matrix(
+    0,
+    nrow = length(tumor_cells),
+    ncol = length(age_levels_normal)
+)
+
+rownames(prox_matrix) <- tumor_cells
+colnames(prox_matrix) <- age_levels_normal
+
+
+for (i in seq_along(tumor_cells)) {  # coge las celulas tumorales
+    cell <- tumor_cells[i]           # para cada celula tumoral:
+
+    neighbors <- snn[cell, ]                 # saca la fila del grafo correspondiente a esa cel
+    neighbors <- neighbors[neighbors > 0]    # coge las células que estén conectadas a ella 
+
+    if (length(neighbors) == 0) next         # si no tiene vecinos salta la cel
+
+    normal_neighbors <- neighbors[names(neighbors) %in% normal_cells] # filtramos las cels solo de healthy tissue (no nos interesa la similitud de tumor con tumor)
+
+    if (length(normal_neighbors) == 0) next # si no tiene vecinos healthy salta la cel
+
+    neighbor_ages <- age_map[names(normal_neighbors)]  # mapeo las células con su edad
+
+    counts <- table(neighbor_ages)                     # creo la tabla
+
+    cols_to_fill <- intersect(names(counts), age_levels_normal)        # rellenamos la matriz con la info
+    prox_matrix[i, cols_to_fill] <- as.numeric(counts[cols_to_fill])
+}
+
+summary(as.numeric(prox_matrix))
+```
+
+
+```{r}
+row_sums <- rowSums(prox_matrix)
+sum(row_sums == 0)
+prox_matrix_norm <- prox_matrix
+prox_matrix_norm[row_sums > 0, ] <- prox_matrix[row_sums > 0, ] / row_sums[row_sums > 0]
+```
+
+```{r}
+snn_proximity_score <- colMeans(prox_matrix_norm, na.rm = TRUE)
+snn_proximity_score
+```   
+
+11.5         14          5          8 
+0.14225193 0.03570971 0.40074000 0.40992438 
+
+```{r}
+saveRDS(prox_matrix, "prox_matrix.rds")
+saveRDS(prox_matrix_norm, "prox_matrix_norm.rds")
+saveRDS(snn_proximity_score, "snn_proximity_score.rds")
+```
+
+```{r}
+prox_matrix          <- readRDS("prox_matrix.rds")
+prox_matrix_norm     <- readRDS("prox_matrix_norm.rds")
+snn_proximity_score  <- readRDS("snn_proximity_score.rds")
+```
+
+
+
+
+
+## histograma
+
+```{r}
+df_plot <- data.frame(
+    Edad = names(snn_proximity_score),
+    Valor = as.numeric(snn_proximity_score)
+)
+df_plot
+
+df_plot$Edad <- factor(df_plot$Edad,levels = c("5", "8", "11.5", "14"), labels = c("Age5", "Age8", "Age11.5", "Age14"))
+df_plot
+```
+
+```{r}
+g2 <- ggplot(df_plot, aes(x = Edad, y = Valor, fill = Edad)) +
+  geom_bar(stat = "identity", width = 1) +   # barras pegadas
+  geom_text(
+      aes(label = paste0(round(Valor * 100, 1), "%")), 
+      vjust = -0.3, size = 5
+  ) +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal(base_size = 14) +
+  scale_fill_manual(values = c(
+    "Age11.5" = "#BF3EFF",
+    "Age14"   = "#C1FFC1",
+    "Age5"    = "#FF7256",
+    "Age8"    = "#EEE685"
+  )) +
+  theme(
+    legend.position = "none",
+    axis.title = element_blank(),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14)
+  )
+
+g2
+
+```
+
+
+```{r}
+ggsave("snn_proximity_score.pdf", plot = g2, width = 6, height = 10, units = "in")
+ggsave("snn_proximity_score.png", plot = g2, width = 6, height = 10, units = "in", dpi = 300)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

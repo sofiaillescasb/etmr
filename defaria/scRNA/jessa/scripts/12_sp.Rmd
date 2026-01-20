@@ -1,0 +1,4182 @@
+---
+title: "12_SP"
+output: html_document
+date: "2025-05-30"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# librerias
+
+```{r, warning = FALSE, message = FALSE}
+library(dplyr)
+library(Seurat)
+library(DropletQC)
+library(Matrix)
+library(SoupX)
+library(presto)
+library(openxlsx)
+library(gprofiler2)
+library(ggplot2)
+library(glmGamPoi)
+library(scCustomize)
+library(ComplexHeatmap)
+library(RColorBrewer)
+library(speckle)
+library(limma)
+library(ggplot2)
+library(ggrepel)
+library(patchwork)
+library(monocle3)
+library(SeuratWrappers)
+library(clustree)
+library(tibble)
+library(readxl)
+library(grid)
+library(gridExtra)
+library(ggtext)
+library(reshape2)
+library(pheatmap)
+library(gt)
+```
+
+
+
+
+# cargamos las matrices 12_KO_SP y 12_WT_SP
+
+```{r}
+# KO
+#data_12KO1SP <- Read10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2KO1SP_final/outs/filtered_feature_bc_matrix")
+#data_12KO2SP <- Read10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2KO2SP_final/outs/filtered_feature_bc_matrix")
+#data_12KO3SP <- Read10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2KO3SP_final/outs/filtered_feature_bc_matrix")
+
+# WT
+#data_12WT1SP <- Read10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2WT1SP_final/outs/filtered_feature_bc_matrix")
+#data_12WT2SP <- Read10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2WT2SP_final/outs/filtered_feature_bc_matrix")
+#data_12WT3SP <- Read10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2WT3SP_final/outs/filtered_feature_bc_matrix")
+# head(data_12KO1SP[,1:20])
+```
+
+
+# soupX
+
+```{r}
+# KO
+soupx_data_12KO1SP <- load10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2KO1SP_final/outs")
+soupx_data_12KO1SP <- autoEstCont(soupx_data_12KO1SP)
+data_12KO1SP <- adjustCounts(soupx_data_12KO1SP, roundToInt=TRUE)
+
+soupx_data_12KO2SP <- load10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2KO2SP_final/outs")
+soupx_data_12KO2SP <- autoEstCont(soupx_data_12KO2SP)
+data_12KO2SP <- adjustCounts(soupx_data_12KO2SP, roundToInt=TRUE)
+
+soupx_data_12KO3SP <- load10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2KO3SP_final/outs")
+soupx_data_12KO3SP <- autoEstCont(soupx_data_12KO3SP)
+data_12KO3SP <- adjustCounts(soupx_data_12KO3SP, roundToInt=TRUE)
+
+# WT
+soupx_data_12WT1SP <- load10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2WT1SP_final/outs")
+soupx_data_12WT1SP <- autoEstCont(soupx_data_12WT1SP)
+data_12WT1SP <- adjustCounts(soupx_data_12WT1SP, roundToInt=TRUE)
+
+soupx_data_12WT2SP <- load10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2WT2SP_final/outs")
+soupx_data_12WT2SP <- autoEstCont(soupx_data_12WT2SP)
+data_12WT2SP <- adjustCounts(soupx_data_12WT2SP, roundToInt=TRUE)
+
+soupx_data_12WT3SP <- load10X("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2WT3SP_final/outs")
+soupx_data_12WT3SP <- autoEstCont(soupx_data_12WT3SP)
+data_12WT3SP <- adjustCounts(soupx_data_12WT3SP, roundToInt=TRUE)
+```
+
+
+
+# creamos objetos seurat
+
+```{r}
+# KO
+so_12KO1SP <- CreateSeuratObject(counts = data_12KO1SP)
+so_12KO1SP
+
+so_12KO2SP <- CreateSeuratObject(counts = data_12KO2SP)
+so_12KO2SP
+
+so_12KO3SP <- CreateSeuratObject(counts = data_12KO3SP)
+so_12KO3SP
+
+# WT
+so_12WT1SP <- CreateSeuratObject(counts = data_12WT1SP)
+so_12WT1SP
+
+so_12WT2SP <- CreateSeuratObject(counts = data_12WT2SP)
+so_12WT2SP
+
+so_12WT3SP <- CreateSeuratObject(counts = data_12WT3SP)
+so_12WT3SP
+```
+
+
+# etiquetado de muestras
+
+```{r}
+# KO
+so_12KO1SP$sample_origin <- "12_KO1_SP"
+so_12KO2SP$sample_origin <- "12_KO2_SP"
+so_12KO3SP$sample_origin <- "12_KO3_SP"
+
+# WT
+so_12WT1SP$sample_origin <- "12_WT1_SP"
+so_12WT2SP$sample_origin <- "12_WT2_SP"
+so_12WT3SP$sample_origin <- "12_WT3_SP"
+```
+
+
+
+# dropletQC
+
+```{r}
+# KO
+#nf_data_12KO1SP <- nuclear_fraction_tags("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2KO1SP_final/outs", tiles = 1, cores = 8, verbose = FALSE)
+#write.csv(nf_data_12KO1SP, "nf_12KO1SP.csv")
+
+#nf_data_12KO2SP <- nuclear_fraction_tags("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2KO2SP_final/outs", tiles = 1, cores = 8, verbose = FALSE)
+#write.csv(nf_data_12KO2SP, "nf_12KO2SP.csv")
+
+#nf_data_12KO3SP <- nuclear_fraction_tags("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2KO3SP_final/outs", tiles = 1, cores = 8, verbose = FALSE)
+#write.csv(nf_data_12KO3SP, "nf_12KO3SP.csv")
+
+# WT
+#nf_data_12WT1SP <- nuclear_fraction_tags("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2WT1SP_final/outs", tiles = 1, cores = 8, verbose = FALSE)
+#write.csv(nf_data_12WT1SP, "nf_12WT1SP.csv")
+
+#nf_data_12WT2SP <- nuclear_fraction_tags("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2WT2SP_final/outs", tiles = 1, cores = 8, verbose = FALSE)
+#write.csv(nf_data_12WT2SP, "nf_12WT2SP.csv")
+
+#nf_data_12WT3SP <- nuclear_fraction_tags("C:/Users/SOL/Desktop/sol/datos/Anna_scRNA/Anna_cellranger/2WT3SP_final/outs", tiles = 1, cores = 8, verbose = FALSE)
+#write.csv(nf_data_12WT3SP, "nf_12WT3SP.csv")
+```
+
+```{r}
+# KO
+nf_data_12KO1SP <- read.csv("C:/Users/SOL/Desktop/sol/single_cell_analysis/etmr/nuclear_fraction/nf_12KO1SP.csv", row.names = 1)
+
+nf_data_12KO2SP <- read.csv("C:/Users/SOL/Desktop/sol/single_cell_analysis/etmr/nuclear_fraction/nf_12KO2SP.csv", row.names = 1)
+
+nf_data_12KO3SP <- read.csv("C:/Users/SOL/Desktop/sol/single_cell_analysis/etmr/nuclear_fraction/nf_12KO3SP.csv", row.names = 1)
+
+# WT
+nf_data_12WT1SP <- read.csv("C:/Users/SOL/Desktop/sol/single_cell_analysis/etmr/nuclear_fraction/nf_12WT1SP.csv", row.names = 1)
+
+nf_data_12WT2SP <- read.csv("C:/Users/SOL/Desktop/sol/single_cell_analysis/etmr/nuclear_fraction/nf_12WT2SP.csv", row.names = 1)
+
+nf_data_12WT3SP <- read.csv("C:/Users/SOL/Desktop/sol/single_cell_analysis/etmr/nuclear_fraction/nf_12WT3SP.csv", row.names = 1)
+```
+
+```{r}
+# KO
+so_12KO1SP$nf <- nf_data_12KO1SP$nuclear_fraction
+so_12KO2SP$nf <- nf_data_12KO2SP$nuclear_fraction
+so_12KO3SP$nf <- nf_data_12KO3SP$nuclear_fraction
+
+# WT
+so_12WT1SP$nf <- nf_data_12WT1SP$nuclear_fraction
+so_12WT2SP$nf <- nf_data_12WT2SP$nuclear_fraction
+so_12WT3SP$nf <- nf_data_12WT3SP$nuclear_fraction
+```
+
+
+
+# unión de las muestras de KO_SP y WT_SP
+
+```{r}
+# KO
+so_12_SP_KO <- merge(so_12KO1SP, y = c(so_12KO2SP,so_12KO3SP), 
+                     add.cell.ids = c("12_KO1_SP", "12_KO2_SP", "12_KO3_SP"))
+#table(so_12_SP_KO@meta.data$sample_origin)
+
+
+# WT
+so_12_SP_WT <- merge(so_12WT1SP, y = c(so_12WT2SP,so_12WT3SP), 
+                     add.cell.ids = c("12_WT1_SP", "12_WT2_SP", "12_WT3_SP"))
+#table(so_12_SP_WT@meta.data$sample_origin)
+```
+
+```{r}
+so_12_SP_KO <- JoinLayers(so_12_SP_KO)
+so_12_SP_WT <- JoinLayers(so_12_SP_WT)
+```
+
+
+# etiquetado para futuros análisis y añadir metadata
+
+```{r}
+# KO
+so_12_SP_KO$condition <- "KO"
+so_12_SP_KO$zone <- "SP"
+
+# WT
+so_12_SP_WT$condition <- "WT"
+so_12_SP_WT$zone <- "SP"
+```
+
+
+# filtramos los genes que no estén expresados
+
+```{r}
+so_12_SP_KO
+so_12_SP_WT
+```
+
+```{r}
+genes_expresados <- rowSums(so_12_SP_KO@assays$RNA@layers$counts) > 0
+so_12_SP_KO <- subset(so_12_SP_KO, features = rownames(so_12_SP_KO)[genes_expresados])
+
+genes_expresados <- rowSums(so_12_SP_WT@assays$RNA@layers$counts) > 0
+so_12_SP_WT <- subset(so_12_SP_WT, features = rownames(so_12_SP_WT)[genes_expresados])
+
+rm(genes_expresados)
+```
+
+```{r}
+so_12_SP_KO
+so_12_SP_WT
+```
+
+# genes y celulas por muestra
+
+```{r}
+# celulas
+table(so_12_SP_KO$sample_origin)
+table(so_12_SP_WT$sample_origin)
+```
+
+```{r}
+# genes (después de filtrar por soupx)
+# si queremos los originales, hay que ir a los web_summary de cellranger
+
+# KO
+genes_por_muestra_KO <- sapply(
+  unique(so_12_SP_KO$sample_origin),
+  function(x) {
+    cells <- colnames(so_12_SP_KO)[so_12_SP_KO$sample_origin == x]
+    expr <- GetAssayData(so_12_SP_KO, assay = "RNA", layer = "counts")[, cells]
+    sum(rowSums(expr) > 0)
+  }
+)
+
+# WT
+genes_por_muestra_WT <- sapply(
+  unique(so_12_SP_WT$sample_origin),
+  function(x) {
+    cells <- colnames(so_12_SP_WT)[so_12_SP_WT$sample_origin == x]
+    expr <- GetAssayData(so_12_SP_WT, assay = "RNA", layer = "counts")[, cells]
+    sum(rowSums(expr) > 0)
+  }
+)
+
+genes_por_muestra_KO
+genes_por_muestra_WT
+```
+
+```{r}
+df_stats <- data.frame(
+  sample = c(names(genes_por_muestra_KO), names(genes_por_muestra_WT)),
+  condition = c(rep("KO", 3), rep("WT", 3)),
+  n_cells = c(table(so_12_SP_KO$sample_origin), table(so_12_SP_WT$sample_origin)),
+  n_genes_after_soupx = c(genes_por_muestra_KO, genes_por_muestra_WT)
+)
+
+write.csv(df_stats, "results_12_sp/tablas/cells_genes_per_sample_12_sp_prefiltered.csv", row.names = FALSE)
+
+rm(genes_por_muestra_KO, genes_por_muestra_WT, df_stats)
+```
+
+
+
+# guardado objetos prefiltrados
+
+```{r}
+saveRDS(so_12_SP_KO, "so_12_SP_KO_prefiltered.rds")
+saveRDS(so_12_SP_WT, "so_12_SP_WT_prefiltered.rds")
+```
+
+```{r}
+so_12_SP_KO <- readRDS("so_12_SP_KO_prefiltered.rds")
+so_12_SP_WT <- readRDS("so_12_SP_WT_prefiltered.rds")
+```
+
+
+# eliminamos datos
+
+```{r}
+# KO
+rm(data_12KO1SP,
+   data_12KO2SP, 
+   data_12KO3SP, 
+   so_12KO1SP,
+   so_12KO2SP,
+   so_12KO3SP, 
+   soupx_data_12KO1SP,
+   soupx_data_12KO2SP, 
+   soupx_data_12KO3SP)
+
+# WT
+rm(data_12WT1SP,
+   data_12WT2SP, 
+   data_12WT3SP, 
+   so_12WT1SP,
+   so_12WT2SP,
+   so_12WT3SP, 
+   soupx_data_12WT1SP,
+   soupx_data_12WT2SP, 
+   soupx_data_12WT3SP)
+```
+
+
+# QC
+
+```{r}
+# KO
+so_12_SP_KO$percent.mt <- PercentageFeatureSet(so_12_SP_KO, pattern = "^mt-")
+so_12_SP_KO$percent.ribo <- PercentageFeatureSet(so_12_SP_KO, pattern = "^Rp[sl]")
+
+feats <- c("nFeature_RNA","nCount_RNA","percent.mt","percent.ribo", "nf")
+
+p1 <- VlnPlot(object = so_12_SP_KO, features = feats, pt.size = 0.01, ncol = 5) + NoLegend()
+p1
+
+#FeatureScatter(so_12_SP_KO, feature1 = "nCount_RNA", feature2 = "percent.mt")
+#FeatureScatter(so_12_SP_KO, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+# WT
+so_12_SP_WT$percent.mt <- PercentageFeatureSet(so_12_SP_WT, pattern = "^mt-")
+so_12_SP_WT$percent.ribo <- PercentageFeatureSet(so_12_SP_WT, pattern = "^Rp[sl]")
+
+p2 <- VlnPlot(object = so_12_SP_WT, features = feats, pt.size = 0.01, ncol = 5) + NoLegend()
+p2
+
+#FeatureScatter(so_12_SP_WT, feature1 = "nCount_RNA", feature2 = "percent.mt")
+#FeatureScatter(so_12_SP_WT, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+rm(p1, p2)
+```
+
+
+```{r}
+feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo", "nf")
+y_limits <- list(
+  c(0, 12000),
+  c(0, 120000),
+  c(0, 12),
+  c(0, 40),
+  c(0, 1)
+)
+
+# KO
+my_colors <- c(
+  "12_KO1_SP" = "#698B69",
+  "12_KO2_SP" = "#9BCD9B",
+  "12_KO3_SP" = "#B4EEB4"
+)
+so_12_SP_KO$sample_origin <- factor(so_12_SP_KO$sample_origin, levels = names(my_colors))
+plots <- lapply(seq_along(feats), function(i) {
+  VlnPlot(
+    object = so_12_SP_KO,
+    features = feats[i],
+    pt.size = 0,
+    group.by = "sample_origin"
+  ) +
+    scale_fill_manual(values = my_colors) +
+    coord_cartesian(ylim = y_limits[[i]]) +
+    NoLegend() +
+    ggtitle(feats[i]) +
+    theme(plot.title = element_text(hjust = 0.5))
+})
+
+combined_plot <- wrap_plots(plots, ncol = 5)
+
+print(combined_plot)
+ggsave("results_12_sp/individual_conditions/QC/QC_vlnplot_12_sp_ko_prefiltrado.png", plot = combined_plot, width = 17, height = 9, dpi = 300)
+ggsave("results_12_sp/individual_conditions/QC/pdfs/QC_vlnplot_12_sp_ko_prefiltrado.pdf", plot = combined_plot, width = 17, height = 9, dpi = 300)
+
+
+# WT
+my_colors <- c(
+  "12_WT1_SP" = "#5D478B",
+  "12_WT2_SP" = "#8968CD",
+  "12_WT3_SP" = "#AB82FF"
+)
+so_12_SP_WT$sample_origin <- factor(so_12_SP_WT$sample_origin, levels = names(my_colors))
+plots <- lapply(seq_along(feats), function(i) {
+  VlnPlot(
+    object = so_12_SP_WT,
+    features = feats[i],
+    pt.size = 0,
+    group.by = "sample_origin"
+  ) +
+    scale_fill_manual(values = my_colors) +
+    coord_cartesian(ylim = y_limits[[i]]) +
+    NoLegend() +
+    ggtitle(feats[i]) +
+    theme(plot.title = element_text(hjust = 0.5))
+})
+combined_plot <- wrap_plots(plots, ncol = 5)
+print(combined_plot)
+ggsave("results_12_sp/individual_conditions/QC/QC_vlnplot_12_sp_wt_prefiltrado.png", plot = combined_plot, width = 17, height = 9)
+ggsave("results_12_sp/individual_conditions/QC/pdfs/QC_vlnplot_12_sp_wt_prefiltrado.pdf", plot = combined_plot, width = 17, height = 9, dpi = 300)
+
+rm(y_limits, combined_plot, my_colors, plots)
+```
+
+
+# filtramos
+
+```{r}
+# KO
+so_12_SP_KO <- subset(so_12_SP_KO, 
+                      subset = nFeature_RNA > 3000 & 
+                        nFeature_RNA < 10000 &
+                        nCount_RNA < 100000 &
+                        percent.mt < 10 & 
+                        percent.ribo < 30)
+so_12_SP_KO
+#table(so_12_SP_KO@meta.data$sample_origin)
+#VlnPlot(object = so_12_SP_KO, 
+#        features = feats, 
+#        pt.size = 0.001, 
+#        ncol = 5)
+
+# WT
+so_12_SP_WT <- subset(so_12_SP_WT, 
+                      subset = nFeature_RNA > 3000 & 
+                        nFeature_RNA < 10000 &
+                        nCount_RNA < 100000 &
+                        percent.mt < 10 & 
+                        percent.ribo < 30)
+so_12_SP_WT
+#table(so_12_SP_WT@meta.data$sample_origin)
+#VlnPlot(object = so_12_SP_WT, 
+#        features = feats, 
+#        pt.size = 0.001, 
+#        ncol = 5
+#        )
+
+rm(feats)
+```
+
+
+# QC postfiltrado
+
+```{r}
+# KO
+so_12_SP_KO$percent.mt <- PercentageFeatureSet(so_12_SP_KO, pattern = "^mt-")
+so_12_SP_KO$percent.ribo <- PercentageFeatureSet(so_12_SP_KO, pattern = "^Rp[sl]")
+
+feats <- c("nFeature_RNA","nCount_RNA","percent.mt","percent.ribo", "nf")
+
+p1 <- VlnPlot(object = so_12_SP_KO, features = feats, pt.size = 0.01, ncol = 5) + NoLegend()
+p1
+
+#FeatureScatter(so_12_SP_KO, feature1 = "nCount_RNA", feature2 = "percent.mt")
+#FeatureScatter(so_12_SP_KO, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+# WT
+so_12_SP_WT$percent.mt <- PercentageFeatureSet(so_12_SP_WT, pattern = "^mt-")
+so_12_SP_WT$percent.ribo <- PercentageFeatureSet(so_12_SP_WT, pattern = "^Rp[sl]")
+
+p2 <- VlnPlot(object = so_12_SP_WT, features = feats, pt.size = 0.01, ncol = 5) + NoLegend()
+p2
+
+#FeatureScatter(so_12_SP_WT, feature1 = "nCount_RNA", feature2 = "percent.mt")
+#FeatureScatter(so_12_SP_WT, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+rm(p1, p2)
+```
+
+
+```{r}
+feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo", "nf")
+y_limits <- list(
+  c(0, 12000),
+  c(0, 120000),
+  c(0, 12),
+  c(0, 40),
+  c(0, 1)
+)
+
+# KO
+my_colors <- c(
+  "12_KO1_SP" = "#698B69",
+  "12_KO2_SP" = "#9BCD9B",
+  "12_KO3_SP" = "#B4EEB4"
+)
+
+so_12_SP_KO$sample_origin <- factor(so_12_SP_KO$sample_origin, levels = names(my_colors))
+
+plots <- lapply(seq_along(feats), function(i) {
+  VlnPlot(
+    object = so_12_SP_KO,
+    features = feats[i],
+    pt.size = 0,
+    group.by = "sample_origin"
+  ) +
+    scale_fill_manual(values = my_colors) +
+    coord_cartesian(ylim = y_limits[[i]]) +
+    NoLegend() +
+    ggtitle(feats[i]) +
+    theme(plot.title = element_text(hjust = 0.5))
+})
+
+combined_plot <- wrap_plots(plots, ncol = 5)
+
+print(combined_plot)
+
+ggsave("results_12_sp/individual_conditions/QC/QC_vlnplot_12_sp_ko_postfiltrado.png", plot = combined_plot, width = 17, height = 9, dpi = 300)
+ggsave("results_12_sp/individual_conditions/QC/pdfs/QC_vlnplot_12_sp_ko_postiltrado.pdf", plot = combined_plot, width = 17, height = 9, dpi = 300)
+
+
+# WT
+my_colors <- c(
+  "12_WT1_SP" = "#5D478B",
+  "12_WT2_SP" = "#8968CD",
+  "12_WT3_SP" = "#AB82FF"
+)
+
+so_12_SP_WT$sample_origin <- factor(so_12_SP_WT$sample_origin, levels = names(my_colors))
+
+plots <- lapply(seq_along(feats), function(i) {
+  VlnPlot(
+    object = so_12_SP_WT,
+    features = feats[i],
+    pt.size = 0,
+    group.by = "sample_origin"
+  ) +
+    scale_fill_manual(values = my_colors) +
+    coord_cartesian(ylim = y_limits[[i]]) +
+    NoLegend() +
+    ggtitle(feats[i]) +
+    theme(plot.title = element_text(hjust = 0.5))
+})
+
+combined_plot <- wrap_plots(plots, ncol = 5)
+
+print(combined_plot)
+
+ggsave("results_12_sp/individual_conditions/QC/QC_vlnplot_12_sp_wt_postfiltrado.png", plot = combined_plot, width = 17, height = 9)
+ggsave("results_12_sp/individual_conditions/QC/pdfs/QC_vlnplot_12_sp_wt_postfiltrado.pdf", plot = combined_plot, width = 17, height = 9, dpi = 300)
+
+rm(y_limits, combined_plot, my_colors, plots)
+```
+
+
+# genes y celulas por muestra
+
+```{r}
+# celulas
+table(so_12_SP_KO$sample_origin)
+table(so_12_SP_WT$sample_origin)
+```
+
+```{r}
+samples_KO <- names(table(so_12_SP_KO$sample_origin))
+samples_WT <- names(table(so_12_SP_WT$sample_origin))
+
+# KO
+genes_por_muestra_KO <- sapply(samples_KO, function(x) {
+  cells <- colnames(so_12_SP_KO)[so_12_SP_KO$sample_origin == x]
+  expr <- GetAssayData(so_12_SP_KO, assay = "RNA", layer = "counts")[, cells]
+  sum(rowSums(expr) > 0)
+})
+genes_por_muestra_KO
+
+# WT
+genes_por_muestra_WT <- sapply(samples_WT, function(x) {
+  cells <- colnames(so_12_SP_WT)[so_12_SP_WT$sample_origin == x]
+  expr <- GetAssayData(so_12_SP_WT, assay = "RNA", layer = "counts")[, cells]
+  sum(rowSums(expr) > 0)
+})
+genes_por_muestra_WT
+```
+
+```{r}
+df_stats <- data.frame(
+  sample = c(samples_KO, samples_WT),
+  condition = c(rep("KO", length(samples_KO)), rep("WT", length(samples_WT))),
+  n_cells = c(as.numeric(table(so_12_SP_KO$sample_origin)), as.numeric(table(so_12_SP_WT$sample_origin))),
+  n_genes = c(genes_por_muestra_KO, genes_por_muestra_WT)
+)
+
+write.csv(df_stats, "results_12_sp/tablas/cells_genes_per_sample_12_sp_postfiltered.csv", row.names = FALSE)
+
+rm(genes_por_muestra_KO, genes_por_muestra_WT, df_stats)
+```
+
+
+# guardado objetos postfiltrados
+
+OJO: EL OBJETO KO TIENE LOS CLUSTERS 12, 20 Y 25 AQUI
+
+```{r}
+saveRDS(so_12_SP_KO, "so_12_SP_KO_postfiltered.rds")
+saveRDS(so_12_SP_WT, "so_12_SP_WT_postfiltered.rds")
+```
+
+```{r}
+so_12_SP_KO <- readRDS("so_12_SP_KO_postfiltered.rds")
+so_12_SP_WT <- readRDS("so_12_SP_WT_postfiltered.rds")
+```
+
+```{r}
+so_12_SP_KO
+so_12_SP_WT
+```
+
+# normalizacion, feature selection, escalado
+
+```{r}
+# KO
+# normalización
+so_12_SP_KO <- NormalizeData(so_12_SP_KO, 
+                             normalization.method = "LogNormalize", 
+                             scale.factor = 10000)
+
+# feature selection
+so_12_SP_KO <- FindVariableFeatures(so_12_SP_KO, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(so_12_SP_KO), 10)
+LabelPoints(VariableFeaturePlot(so_12_SP_KO), points = top10, repel = TRUE)
+
+# escalamos los datos
+all.genes_12_SP_KO <- rownames(so_12_SP_KO)
+so_12_SP_KO <- ScaleData(so_12_SP_KO, features = all.genes_12_SP_KO)
+
+
+# WT
+# normalización
+so_12_SP_WT <- NormalizeData(so_12_SP_WT, 
+                             normalization.method = "LogNormalize", 
+                             scale.factor = 10000)
+
+# feature selection
+so_12_SP_WT <- FindVariableFeatures(so_12_SP_WT, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(so_12_SP_WT), 10)
+LabelPoints(VariableFeaturePlot(so_12_SP_WT), points = top10, repel = TRUE)
+
+# escalamos los datos
+all.genes_12_SP_WT <- rownames(so_12_SP_WT)
+so_12_SP_WT <- ScaleData(so_12_SP_WT, features = all.genes_12_SP_WT)
+
+rm(all.genes_12_SP_KO, all.genes_12_SP_WT, top10)
+```
+
+
+
+# PCA
+
+```{r}
+# KO
+so_12_SP_KO <- RunPCA(so_12_SP_KO, features = VariableFeatures(object = so_12_SP_KO))
+
+# print(so_12_SP_KO[["pca"]], dims = 1:5, nfeatures = 5)
+# DimPlot(so_12_SP_KO, reduction = "pca") + NoLegend()
+# DimHeatmap(so_12_SP_KO, dims = 1, cells = 500, balanced = TRUE)
+# DimHeatmap(so_12_SP_KO, dims = 1:15, cells = 500, balanced = TRUE)
+
+# WT
+so_12_SP_WT <- RunPCA(so_12_SP_WT, features = VariableFeatures(object = so_12_SP_WT))
+
+# print(so_12_SP_WT[["pca"]], dims = 1:5, nfeatures = 5)
+# DimPlot(so_12_SP_WT, reduction = "pca") + NoLegend()
+# DimHeatmap(so_12_SP_WT, dims = 1, cells = 500, balanced = TRUE)
+# DimHeatmap(so_12_SP_WT, dims = 1:15, cells = 500, balanced = TRUE)
+```
+
+
+# cell division scores
+
+```{r}
+# KO
+mmus_s = gorth(cc.genes$s.genes,
+               source_organism = "hsapiens", 
+               target_organism = "mmusculus")$ortholog_name
+mmus_g2m = gorth(cc.genes$g2m.genes, 
+                 source_organism = "hsapiens", 
+                 target_organism = "mmusculus")$ortholog_name
+so_12_SP_KO <- CellCycleScoring(object = so_12_SP_KO,
+                              g2m.features = mmus_g2m,
+                                s.features = mmus_s, set.ident = TRUE)
+table(so_12_SP_KO@meta.data[["Phase"]])
+#head(so_12_SP_KO@meta.data)
+
+# WT  
+mmus_s = gorth(cc.genes$s.genes,
+               source_organism = "hsapiens", 
+               target_organism = "mmusculus")$ortholog_name
+mmus_g2m = gorth(cc.genes$g2m.genes, 
+                 source_organism = "hsapiens", 
+                 target_organism = "mmusculus")$ortholog_name
+so_12_SP_WT <- CellCycleScoring(object = so_12_SP_WT,
+                             g2m.features = mmus_g2m,
+                              s.features = mmus_s, set.ident = TRUE)
+table(so_12_SP_WT@meta.data[["Phase"]])
+#head(so_12_SP_WT@meta.data)
+```
+
+
+# determinamos la dimensionalidad
+
+```{r}
+# KO
+ElbowPlot(so_12_SP_KO, reduction = "pca", ndims = 50)
+
+# WT
+ElbowPlot(so_12_SP_WT, reduction = "pca", ndims = 50)
+```
+
+
+
+
+# clusters
+
+```{r}
+# KO
+so_12_SP_KO <- FindNeighbors(so_12_SP_KO, dims = 1:30)
+so_12_SP_KO <- FindClusters(so_12_SP_KO, resolution = 0.8)
+table(Idents(so_12_SP_KO))
+
+# WT
+so_12_SP_WT <- FindNeighbors(so_12_SP_WT, dims = 1:30)
+so_12_SP_WT <- FindClusters(so_12_SP_WT, resolution = 0.8)
+table(Idents(so_12_SP_WT))
+```
+
+
+
+# umap
+
+```{r}
+# KO
+so_12_SP_KO <- RunUMAP(so_12_SP_KO, dims = 1:30)
+
+# WT 
+so_12_SP_WT <- RunUMAP(so_12_SP_WT, dims = 1:30)
+```
+
+```{r}
+# KO
+DimPlot(so_12_SP_KO, reduction = "umap", label = T, label.size = 2.4) + NoLegend()
+DimPlot(so_12_SP_KO, reduction = "umap", label = T, group.by = "sample_origin")
+DimPlot(so_12_SP_KO, reduction = "umap", label = T, group.by = "cell_types_KO")+NoLegend()
+
+# WT 
+DimPlot(so_12_SP_WT, reduction = "umap", label = T, label.size = 2.4) + NoLegend()
+#DimPlot(so_12_SP_WT, reduction = "umap", label = T, group.by = "sample_origin")
+DimPlot(so_12_SP_WT, reduction = "umap", label = T, group.by = "Phase")
+```
+
+
+# QC prop muestras
+
+```{r}
+# KO
+metadata <- so_12_SP_KO@meta.data
+prop_df <- metadata %>%
+  group_by(seurat_clusters, sample_origin) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(proportion = n / sum(n))
+
+my_colors <- c(
+  "12_KO1_SP" = "#698B69",
+  "12_KO2_SP" = "#9BCD9B",
+  "12_KO3_SP" = "#B4EEB4"
+)
+
+p1 <- ggplot(prop_df, aes(x = seurat_clusters, y = proportion, fill = sample_origin)) +
+  geom_bar(stat = "identity", position = "fill") +
+  ylab("Cell proportion") +
+  xlab("Cluster") +
+  labs(fill = "Sample") +
+  scale_fill_manual(values = my_colors) +
+  theme_minimal()
+p1
+
+
+# WT
+metadata <- so_12_SP_WT@meta.data
+prop_df <- metadata %>%
+  group_by(seurat_clusters, sample_origin) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(proportion = n / sum(n))
+
+my_colors <- c(
+  "12_WT1_SP" = "#5D478B",
+  "12_WT2_SP" = "#8968CD",
+  "12_WT3_SP" = "#AB82FF"
+)
+
+
+p2 <- ggplot(prop_df, aes(x = seurat_clusters, y = proportion, fill = sample_origin)) +
+  geom_bar(stat = "identity", position = "fill") +
+  ylab("Cell proportion") +
+  xlab("Cluster") +
+  labs(fill = "Sample") +
+  scale_fill_manual(values = my_colors) +
+  theme_minimal()
+p2
+
+rm(metadata, prop_df, my_colors)
+```
+
+
+```{r}
+# KO
+ggsave("results_12_sp/individual_conditions/QC/QC_postanalisis_prop_cel_cluster_12_sp_ko.png", 
+       p1, width = 9, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/QC/pdfs/QC_postanalisis_prop_cel_cluster_12_sp_ko.pdf", 
+       p1, width = 9, height = 6)
+
+# WT
+ggsave("results_12_sp/individual_conditions/QC/QC_postanalisis_prop_cel_cluster_12_sp_wt.png", 
+       p2, width = 9, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/QC/pdfs/QC_postanalisis_prop_cel_cluster_12_sp_wt.pdf", 
+       p2, width = 9, height = 6)
+
+rm(p1, p2)
+```
+
+
+# anotacion
+
+```{r}
+endothelial <- c("Cldn5", "Mcam")
+FeaturePlot(so_12_SP_KO, features = endothelial)
+FeaturePlot(so_12_SP_WT, features = endothelial)
+
+red_blood_cells <- c("Hemgn")
+FeaturePlot(so_12_SP_KO, features = red_blood_cells)
+FeaturePlot(so_12_SP_WT, features = red_blood_cells)
+
+vlmc <- c("Col1a1", "Vtn")
+FeaturePlot(so_12_SP_KO, features = vlmc)
+FeaturePlot(so_12_SP_WT, features = vlmc)
+
+pericytes <- c("Cspg4", "Pdgfrb")
+FeaturePlot(so_12_SP_KO, features = pericytes)
+FeaturePlot(so_12_SP_WT, features = pericytes)
+# NADA HASTA AQUI
+
+
+# posiblemente clusters 21 y 16 KO y 15 WT
+cajal_retzius <- c("Reln", "Lhx5", "Dbx1", "Ebf3", "Lhx1", "Wnt3a", "Trp73", "Calb2", "Ebf2")
+FeaturePlot(so_12_SP_KO, features = cajal_retzius)
+FeaturePlot(so_12_SP_WT, features = cajal_retzius)
+
+# posiblemente cluster 25 KO? mirar bien
+astrocytes <- c("Apoe", "Aldh1l1", "Slc1a3")
+FeaturePlot(so_12_SP_KO, features = astrocytes)
+FeaturePlot(so_12_SP_WT, features = astrocytes)
+
+oligodendrocytes <- c("Olig1", "Olig2", "Pdgfra")
+FeaturePlot(so_12_SP_KO, features = oligodendrocytes)
+FeaturePlot(so_12_SP_WT, features = oligodendrocytes)
+
+microglia <- c("Aif1", "Tmem119", "Tyrobp")
+FeaturePlot(so_12_SP_KO, features = microglia)
+FeaturePlot(so_12_SP_WT, features = microglia)
+
+
+# el resto no. solo cluster 25 ko marcadores aleatorios ver bien que es
+
+neu_general <- c("Snap25", "Tubb3", "Dcx", "Dner")
+FeaturePlot(so_12_SP_KO, features = neu_general)
+FeaturePlot(so_12_SP_WT, features = neu_general)
+
+glut_neurons_pallial <- c("Slc17a6", "Emx1", "Tbr1")
+FeaturePlot(so_12_SP_KO, features = glut_neurons_pallial)
+FeaturePlot(so_12_SP_WT, features = glut_neurons_pallial)
+
+gaba_neurons_subpallial <- c("Gad1", "Gad2")
+FeaturePlot(so_12_SP_KO, features = gaba_neurons_subpallial)
+FeaturePlot(so_12_SP_WT, features = gaba_neurons_subpallial)
+
+gaba_neurons_subpallial_prog <- c("Dlx2", "Dlx1")
+FeaturePlot(so_12_SP_KO, features = gaba_neurons_subpallial_prog)
+FeaturePlot(so_12_SP_WT, features = gaba_neurons_subpallial_prog)
+
+ipc <- c("Gadd45g","Btg2", "Ccnd2", # general
+         "Ascl1",              # inhibitorias
+         "Eomes","Neurog2")    # excitatorias
+FeaturePlot(so_12_SP_KO, features = ipc)
+FeaturePlot(so_12_SP_WT, features = ipc)
+
+gaba_neurons_subpallial_rostral_like <- c("Gsx2", "Isl1")
+FeaturePlot(so_12_SP_KO, features = gaba_neurons_subpallial_rostral_like)
+FeaturePlot(so_12_SP_WT, features = gaba_neurons_subpallial_rostral_like)
+
+gaba_neurons_subpallial_caudal_like <- c("Nkx2-1", "Lhx6", "Shh")
+FeaturePlot(so_12_SP_KO, features = gaba_neurons_subpallial_caudal_like)
+FeaturePlot(so_12_SP_WT, features = gaba_neurons_subpallial_caudal_like)
+
+nec_rdg <- c("Pax6", "Sox2")
+FeaturePlot(so_12_SP_KO, features = nec_rdg)
+FeaturePlot(so_12_SP_WT, features = nec_rdg)
+
+rdg <- c("Nes", "Ccnd1", "Ptn", "Hmga2", "Hes1", "Hes5", "Fabp7", "Slc1a3")
+FeaturePlot(so_12_SP_KO, features = rdg)
+FeaturePlot(so_12_SP_WT, features = rdg)
+
+
+# Raras ko:
+
+mcc_markers <- c(
+  "Foxj1", "Mcidas", "Trp73", "Cdc20b", "Ccno", 
+  "Deup1", "Dynlrb2", "Cfap52", "Cfap65", "Spef2", 
+  "Ttc21a", "Myb", "Gemc1", "Plvap", "Clic6"
+)
+FeaturePlot(so_12_SP_KO, features = mcc_markers)
+FeaturePlot(so_12_SP_WT, features = mcc_markers)
+
+
+
+FeaturePlot(so_12_SP_KO, features = c("Ttr", "Folr1", "Prlr")) 
+# https://www.nature.com/articles/s41380-021-01416-3#additional-information
+```
+
+
+```{r}
+e12sp <- c(
+  "Folr1",
+  "Ascl1", "Gadd45g", "Btg2", "Pax6", "Nes", "Vim", "Eomes",  # PROG
+  "Top2a", "Mki67", "Aurka", # Cycling
+  "Snap25", "Tubb3", "Dsp", "Dner", # NEURONA
+  "Slc17a6", "Emx1", "Tbr1", # GLUTAMATÉRGICAS
+  "Gad1", "Gad2", "Dlx2", "Dlx1", # GABAÉRGICAS
+  "Gsx2", # rostral LIKE PROG
+  "Nkx2-1", # caudal LIKE PROG
+  "Shh", # caudal ps6 LIKE
+  "Isl1", # rostral NEU
+  "Lhx6", # caudal NEU
+  "Pax6", "Sox2", # NEC-RDG
+  "Nes", "Ccnd1", "Ptn", "Hmga2", "Hes1", "Hes5", "Fabp7", "Slc1a3", # RDG
+  "Prtg", "Wnt8b", "Id3" )# NEC
+
+
+scCustomize::Clustered_DotPlot(
+  so_12_SP_KO, 
+  features = e12sp, 
+  plot_km_elbow = FALSE, 
+  colors_use_exp = colorRampPalette(c("blue", "white", "red"))(20)
+)
+
+
+scCustomize::Clustered_DotPlot(
+  so_12_SP_WT, 
+  features = e12sp, 
+  plot_km_elbow = FALSE, 
+  colors_use_exp = colorRampPalette(c("blue", "white", "red"))(20)
+)
+```
+
+```{r}
+cluster_ids_ko <- c("0.RDG_cycling", 
+                 "1.RDG", 
+                 "2.GABA_neuron_caudal_like", 
+                 "3.GABA_neuron_caudal_like", 
+                 "4.RDG_cycling", 
+                 "5.GABA_IPC_cycling_rostral_like", 
+                 "6.GABA_IPC_rostral_like", 
+                 "7.GLUT_IPC", 
+                 "8.GLUT_neuron", 
+                 "9.GABA_neuron_rostral_like", 
+                 "10.GLUT_neuron", 
+                 "11.GLUT_neuron", 
+                 "12.Choroid_plexus", 
+                 "13.GABA_neuron_rostral_like", 
+                 "14.GABA_IPC_cycling_rostral_like", 
+                 "15.GABA_neuron_rostral_like", 
+                 "16.CR", 
+                 "17.RDG", 
+                 "18.GABA_IPC_rostral_like", 
+                 "19.GABA_neuron_rostral_like",
+                 "20.Choroid_plexus", 
+                 "21.CR",
+                 "22.RDG_cycling", 
+                 "23.GLUT_IPC_cycling",
+                 "24.GABA_neuron_caudal_like", 
+                 "25.Glial_ambiguous"
+                 )
+
+
+cluster_ids_wt <- c("0.RDG", 
+                 "1.RDG_cycling", 
+                 "2.GABA_neuron_rostral_like", 
+                 "3.GABA_neuron_rostral_like", 
+                 "4.GABA_neuron_caudal_like", 
+                 "5.GABA_IPC_cycling_rostral_like", 
+                 "6.RDG_cycling", 
+                 "7.RDG", 
+                 "8.GABA_IPC_rostral_like", 
+                 "9.RDG_cycling", 
+                 "10.GLUT_neuron", 
+                 "11.GLUT_neuron", 
+                 "12.RDG", 
+                 "13.GABA_neuron_rostral_like", 
+                 "14.GLUT_IPC", 
+                 "15.CR", 
+                 "16.RDG_cycling", 
+                 "17.GLUT_neuron", 
+                 "18.RDG_cycling", 
+                 "19.GLUT_neuron")
+```
+
+```{r}
+# KO
+names(cluster_ids_ko) <- levels(so_12_SP_KO)
+so_12_SP_KO <- RenameIdents(so_12_SP_KO, cluster_ids_ko)
+so_12_SP_KO$cell_types_KO <- so_12_SP_KO@active.ident
+
+# WT
+names(cluster_ids_wt) <- levels(so_12_SP_WT)
+so_12_SP_WT <- RenameIdents(so_12_SP_WT, cluster_ids_wt)
+so_12_SP_WT$cell_types_WT <- so_12_SP_WT@active.ident
+```
+
+# figuras marcadores
+
+```{r}
+e12sp <- c(
+  "Ascl1", "Gadd45g", "Btg2", "Pax6", "Nes", "Vim", "Eomes",  # PROG
+  "Top2a", "Mki67", "Aurka", # Cycling
+  "Snap25", "Tubb3", "Dsp", "Dner", # NEURONA
+  "Slc17a6", "Emx1", "Tbr1", # GLUTAMATÉRGICAS
+  "Gad1", "Gad2", "Dlx2", "Dlx1", # GABAÉRGICAS
+  "Gsx2", # rostral LIKE PROG
+  "Nkx2-1", # caudal LIKE PROG
+  "Shh", # caudal ps6 LIKE
+  "Isl1", # rostral NEU
+  "Lhx6", # caudal NEU
+  "Pax6", "Sox2", # NEC-RDG
+  "Nes", "Ccnd1", "Ptn", "Hmga2", "Hes1", "Hes5", "Fabp7", "Slc1a3")
+
+
+
+# KO
+pdf("results_12_sp/individual_conditions/pdfs/Clustered_DotPlot_KO.pdf", width = 10, height = 8)
+scCustomize::Clustered_DotPlot(
+  so_12_SP_KO, 
+  features = e12sp, 
+  plot_km_elbow = FALSE, 
+  colors_use_exp = colorRampPalette(c("blue", "white", "red"))(20)
+)
+dev.off()
+
+png("results_12_sp/individual_conditions/Clustered_DotPlot_KO.png", width = 1200, height = 1000, res = 150)
+scCustomize::Clustered_DotPlot(
+  so_12_SP_KO, 
+  features = e12sp, 
+  plot_km_elbow = FALSE, 
+  colors_use_exp = colorRampPalette(c("blue", "white", "red"))(20)
+)
+dev.off()
+
+# WT
+pdf("results_12_sp/individual_conditions/pdfs/Clustered_DotPlot_WT.pdf", width = 10, height = 8)
+scCustomize::Clustered_DotPlot(
+  so_12_SP_WT, 
+  features = e12sp, 
+  plot_km_elbow = FALSE, 
+  colors_use_exp = colorRampPalette(c("blue", "white", "red"))(20)
+)
+dev.off()
+
+png("results_12_sp/individual_conditions/Clustered_DotPlot_WT.png", width = 1200, height = 1000, res = 150)
+scCustomize::Clustered_DotPlot(
+  so_12_SP_WT, 
+  features = e12sp, 
+  plot_km_elbow = FALSE, 
+  colors_use_exp = colorRampPalette(c("blue", "white", "red"))(20)
+)
+dev.off()
+
+```
+
+
+# biomarcadores
+
+```{r}
+markers_25_ko <- FindMarkers(so_12_SP_KO, ident.1 = 25, 
+                             only.pos = TRUE)
+markers_21_16_ko <- FindMarkers(so_12_SP_KO, ident.1 = c(21,16), 
+                             only.pos = TRUE)
+markers_21_ko <- FindMarkers(so_12_SP_KO, ident.1 = 21, 
+                             only.pos = TRUE)
+markers_16_ko <- FindMarkers(so_12_SP_KO, ident.1 = 16, 
+                             only.pos = TRUE)
+markers_20_12_ko <- FindMarkers(so_12_SP_KO, ident.1 = c(20,12), 
+                             only.pos = TRUE)
+markers_20_ko <- FindMarkers(so_12_SP_KO, ident.1 = 20, 
+                             only.pos = TRUE)
+markers_12_ko <- FindMarkers(so_12_SP_KO, ident.1 = 12, 
+                             only.pos = TRUE)
+
+
+markers_15_wt <- FindMarkers(so_12_SP_WT, ident.1 = 15, 
+                             only.pos = TRUE)
+```
+
+```{r}
+write.csv(markers_25_ko, 
+          file = "results_12_sp/individual_conditions/marcadores/markers_25_KO.csv")
+write.csv(markers_21_16_ko, 
+          file = "results_12_sp/individual_conditions/marcadores/markers_21_16_KO.csv")
+write.csv(markers_21_ko, 
+          file = "results_12_sp/individual_conditions/marcadores/markers_21_KO.csv")
+write.csv(markers_16_ko, 
+          file = "results_12_sp/individual_conditions/marcadores/markers_16_KO.csv")
+write.csv(markers_20_12_ko, 
+          file = "results_12_sp/individual_conditions/marcadores/markers_20_12_KO.csv")
+write.csv(markers_20_ko, 
+          file = "results_12_sp/individual_conditions/marcadores/markers_20_KO.csv")
+write.csv(markers_12_ko, 
+          file = "results_12_sp/individual_conditions/marcadores/markers_12_KO.csv")
+
+write.csv(markers_15_wt, 
+          file = "results_12_sp/individual_conditions/marcadores/markers_15_WT.csv")
+```
+
+
+```{r}
+FeaturePlot(so_12_SP_WT, features = rownames(markers_21_16_ko[1:4,]))
+FeaturePlot(so_12_SP_KO, features = rownames(markers_21_16_ko[1:4,]))
+
+FeaturePlot(so_12_SP_WT, features = rownames(markers_16_ko[1:4,]))
+FeaturePlot(so_12_SP_KO, features = rownames(markers_16_ko[1:4,]))
+
+FeaturePlot(so_12_SP_WT, features = rownames(markers_21_ko[1:4,]))
+FeaturePlot(so_12_SP_KO, features = rownames(markers_21_ko[1:4,]))
+
+FeaturePlot(so_12_SP_WT, features = rownames(markers_15_wt[1:4,]))
+FeaturePlot(so_12_SP_KO, features = rownames(markers_15_wt[1:4,]))
+```
+
+
+# filtrado de objeto KO
+
+## guardamos los graficos y objeto
+
+```{r}
+p1 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, label.size = 2.4) + NoLegend()
+ggsave("results_12_sp/individual_conditions/KO_con_12_20_25/KO_umap.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/KO_con_12_20_25/pdfs/KO_umap.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, group.by = "seurat_clusters")
+ggsave("results_12_sp/individual_conditions/KO_con_12_20_25/KO_umap_clusters.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/KO_con_12_20_25/pdfs/KO_umap_clusters.pdf", plot = p2, width = 8, height = 6)
+
+p4 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, group.by = "sample_origin")
+ggsave("results_12_sp/individual_conditions/KO_con_12_20_25/KO_umap_sample_origin.png", plot = p4, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/KO_con_12_20_25/pdfs/KO_umap_sample_origin.pdf", plot = p4, width = 8, height = 6)
+
+p5 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, group.by = "Phase")
+ggsave("results_12_sp/individual_conditions/KO_con_12_20_25/KO_umap_phase.png", plot = p5, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/KO_con_12_20_25/pdfs/KO_umap_phase.pdf", plot = p5, width = 8, height = 6)
+```
+
+```{r}
+saveRDS(so_12_SP_KO, file = "so_12_SP_KO_con_12_20_25.rds")
+```
+
+```{r}
+so_12_SP_KO <- readRDS("so_12_SP_KO_con_12_20_25.rds")
+```
+
+## filtrado
+
+```{r}
+so_12_SP_KO <- subset(so_12_SP_KO, idents = c("0.RDG_cycling", 
+                 "1.RDG", 
+                 "2.GABA_neuron_caudal_like", 
+                 "3.GABA_neuron_caudal_like", 
+                 "4.RDG_cycling", 
+                 "5.GABA_IPC_cycling_rostral_like", 
+                 "6.GABA_IPC_rostral_like", 
+                 "7.GLUT_IPC", 
+                 "8.GLUT_neuron", 
+                 "9.GABA_neuron_rostral_like", 
+                 "10.GLUT_neuron", 
+                 "11.GLUT_neuron", 
+                 "13.GABA_neuron_rostral_like", 
+                 "14.GABA_IPC_cycling_rostral_like", 
+                 "15.GABA_neuron_rostral_like", 
+                 "16.CR", 
+                 "17.RDG", 
+                 "18.GABA_IPC_rostral_like", 
+                 "19.GABA_neuron_rostral_like",
+                 "21.CR",
+                 "22.RDG_cycling", 
+                 "23.GLUT_IPC_cycling",
+                 "24.GABA_neuron_caudal_like"
+                 ))
+```
+
+```{r}
+levels(so_12_SP_KO$cell_types_KO)
+so_12_SP_KO$cell_types_KO <- droplevels(so_12_SP_KO$cell_types_KO)
+levels(so_12_SP_KO$cell_types_KO)
+```
+
+```{r}
+# para eliminar las celulillas que se quedan sueltas con un widget:
+p1 <- DimPlot(so_12_SP_KO, reduction = "umap")
+selected_cells <- CellSelector(p1)
+so_12_SP_KO <- subset(so_12_SP_KO, cells = setdiff(Cells(so_12_SP_KO), selected_cells))
+```
+
+
+
+# añadir categorias de tipos celulares
+
+```{r}
+# KO
+so_12_SP_KO@meta.data$cell_types_2_KO <- so_12_SP_KO@meta.data$cell_types_KO
+so_12_SP_KO@meta.data$cell_types_2_KO <- factor(
+  so_12_SP_KO@meta.data$cell_types_2_KO,
+  levels =  c("0.RDG_cycling", 
+                 "1.RDG", 
+                 "2.GABA_neuron_caudal_like", 
+                 "3.GABA_neuron_caudal_like", 
+                 "4.RDG_cycling", 
+                 "5.GABA_IPC_cycling_rostral_like", 
+                 "6.GABA_IPC_rostral_like", 
+                 "7.GLUT_IPC", 
+                 "8.GLUT_neuron", 
+                 "9.GABA_neuron_rostral_like", 
+                 "10.GLUT_neuron", 
+                 "11.GLUT_neuron", 
+                 "13.GABA_neuron_rostral_like", 
+                 "14.GABA_IPC_cycling_rostral_like", 
+                 "15.GABA_neuron_rostral_like", 
+                 "16.CR", 
+                 "17.RDG", 
+                 "18.GABA_IPC_rostral_like", 
+                 "19.GABA_neuron_rostral_like",
+                 "21.CR",
+                 "22.RDG_cycling", 
+                 "23.GLUT_IPC_cycling",
+                 "24.GABA_neuron_caudal_like"
+                 ),
+  labels =  c("RDG", 
+                 "RDG", 
+                 "GABA_neuron", 
+                 "GABA_neuron", 
+                 "RDG", 
+                 "GABA_IPC", 
+                 "GABA_IPC", 
+                 "GLUT_IPC", 
+                 "GLUT_neuron", 
+                 "GABA_neuron", 
+                 "GLUT_neuron", 
+                 "GLUT_neuron", 
+                 "GABA_neuron", 
+                 "GABA_IPC", 
+                 "GABA_neuron", 
+                 "CR", 
+                 "RDG", 
+                 "GABA_IPC", 
+                 "GABA_neuron",
+                 "CR",
+                 "RDG", 
+                 "GLUT_IPC",
+                 "GABA_neuron"
+                 ))
+
+# WT
+so_12_SP_WT@meta.data$cell_types_2_WT <- so_12_SP_WT@meta.data$cell_types_WT
+so_12_SP_WT@meta.data$cell_types_2_WT <- factor(
+  so_12_SP_WT@meta.data$cell_types_2_WT,
+  levels = c("0.RDG", 
+                 "1.RDG_cycling", 
+                 "2.GABA_neuron_rostral_like", 
+                 "3.GABA_neuron_rostral_like", 
+                 "4.GABA_neuron_caudal_like", 
+                 "5.GABA_IPC_cycling_rostral_like", 
+                 "6.RDG_cycling", 
+                 "7.RDG", 
+                 "8.GABA_IPC_rostral_like", 
+                 "9.RDG_cycling", 
+                 "10.GLUT_neuron", 
+                 "11.GLUT_neuron", 
+                 "12.RDG", 
+                 "13.GABA_neuron_rostral_like", 
+                 "14.GLUT_IPC", 
+                 "15.CR", 
+                 "16.RDG_cycling", 
+                 "17.GLUT_neuron", 
+                 "18.RDG_cycling", 
+                 "19.GLUT_neuron"),
+  labels =  c("RDG", 
+                 "RDG", 
+                 "GABA_neuron", 
+                 "GABA_neuron", 
+                 "GABA_neuron", 
+                 "GABA_IPC", 
+                 "RDG", 
+                 "RDG", 
+                 "GABA_IPC", 
+                 "RDG", 
+                 "GLUT_neuron", 
+                 "GLUT_neuron", 
+                 "RDG", 
+                 "GABA_neuron", 
+                 "GLUT_IPC", 
+                 "CR", 
+                 "RDG", 
+                 "GLUT_neuron", 
+                 "RDG", 
+                 "GLUT_neuron"))
+```
+
+
+#  figuras expresion marcadores:
+
+```{r}
+save_marker_featureplots <- function(output_dir, seurat_obj, markers_list) {
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+
+  pdf_dir <- file.path(output_dir, "0pdfs")
+  if (!dir.exists(pdf_dir)) {
+    dir.create(pdf_dir)
+  }
+
+  obj_name <- deparse(substitute(seurat_obj))
+
+  for (cell_type in names(markers_list)) {
+    cat("Procesando tipo celular:", cell_type, "\n")
+
+    cell_dir <- file.path(output_dir, cell_type)
+    if (!dir.exists(cell_dir)) {
+      dir.create(cell_dir)
+    }
+    markers <- markers_list[[cell_type]]
+
+    for (gene in markers) {
+      cat("  Generando FeaturePlot para:", gene, "\n")
+
+      p <- FeaturePlot(seurat_obj, features = gene) +
+        ggtitle(paste0(gene, " - ", cell_type))
+
+      file_base <- paste0(obj_name, "_", gene)
+
+      png_path <- file.path(cell_dir, paste0(file_base, ".png"))
+      ggsave(filename = png_path, plot = p, width = 6, height = 5, dpi = 300)
+
+      pdf_path <- file.path(pdf_dir, paste0(file_base, ".pdf"))
+      ggsave(filename = pdf_path, plot = p, width = 6, height = 5)
+    }
+  }
+}
+```
+
+```{r}
+markers_list <- list(
+  cajal_retzius = c("Reln", "Lhx5"),
+  ipc = c("Ascl1", "Gadd45g", "Btg2", "Eomes"),
+  cycling = c("Top2a", "Mki67", "Aurka"),
+  neuron = c("Snap25", "Tubb3", "Dsp", "Dner"),
+  glutamatergic = c("Slc17a6", "Emx1", "Tbr1"),
+  gabaergic = c("Gad1", "Gad2", "Dlx2", "Dlx1"),
+  rostral_like = c("Isl1", "Gsx2"),
+  caudal_like = c("Nkx2-1", "Shh", "Lhx6"),
+  rdg = c("Nes", "Ccnd1", "Ptn", "Hmga2", "Hes1", "Hes5", "Fabp7", "Slc1a3",  "Pax6", "Vim", "Sox2"),
+  nec = c("Prtg", "Wnt8b", "Id3")
+)
+```
+
+
+```{r}
+save_marker_featureplots(
+  output_dir = "results_12_sp/individual_conditions/biomarcadores/ko/",
+  seurat_obj = so_12_SP_KO,
+  markers_list = markers_list
+)
+```
+
+
+```{r}
+save_marker_featureplots(
+  output_dir = "results_12_sp/individual_conditions/biomarcadores/wt/",
+  seurat_obj = so_12_SP_WT,
+  markers_list = markers_list
+)
+```
+
+
+
+
+# graficos umap
+
+```{r}
+# KO
+DimPlot(so_12_SP_KO, reduction = "umap", label = T)
+DimPlot(so_12_SP_KO, reduction = "umap", label = T, group.by = "seurat_clusters")
+DimPlot(so_12_SP_KO, reduction = "umap", label = T, group.by = "cell_types_2_KO")
+DimPlot(so_12_SP_KO, reduction = "umap", label = T, group.by = "sample_origin")
+DimPlot(so_12_SP_KO, reduction = "umap", label = T, group.by = "Phase")
+
+# WT 
+DimPlot(so_12_SP_WT, reduction = "umap", label = T)
+DimPlot(so_12_SP_WT, reduction = "umap", label = T, group.by = "seurat_clusters")
+DimPlot(so_12_SP_WT, reduction = "umap", label = T, group.by = "cell_types_2_WT")
+DimPlot(so_12_SP_WT, reduction = "umap", label = T, group.by = "sample_origin")
+DimPlot(so_12_SP_WT, reduction = "umap", label = T, group.by = "Phase")
+```
+
+
+```{r}
+p1 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, label.size = 2.4) + NoLegend()
+ggsave("results_12_sp/individual_conditions/KO_umap_default.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_umap_default.pdf", plot = p1, width = 8, height = 6)
+
+p1 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, label.size = 2.4)
+ggsave("results_12_sp/individual_conditions/KO_umap_default_names.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_umap_default_names.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, group.by = "seurat_clusters")
+ggsave("results_12_sp/individual_conditions/KO_umap_clusters.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_umap_clusters.pdf", plot = p2, width = 8, height = 6)
+
+p3 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, group.by = "cell_types_2_KO")
+ggsave("results_12_sp/individual_conditions/KO_umap_cell_types.png", plot = p3, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_umap_cell_types.pdf", plot = p3, width = 8, height = 6)
+
+p4 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, group.by = "sample_origin")
+ggsave("results_12_sp/individual_conditions/KO_umap_sample_origin.png", plot = p4, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_umap_sample_origin.pdf", plot = p4, width = 8, height = 6)
+
+p5 <- DimPlot(so_12_SP_KO, reduction = "umap", label = TRUE, group.by = "Phase")
+ggsave("results_12_sp/individual_conditions/KO_umap_phase.png", plot = p5, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_umap_phase.pdf", plot = p5, width = 8, height = 6)
+
+p6 <- DimPlot(so_12_SP_WT, reduction = "umap", label = TRUE, label.size = 2.4) + NoLegend()
+ggsave("results_12_sp/individual_conditions/WT_umap_default.png", plot = p6, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_umap_default.pdf", plot = p6, width = 8, height = 6)
+
+p6 <- DimPlot(so_12_SP_WT, reduction = "umap", label = TRUE, label.size = 2.4)
+ggsave("results_12_sp/individual_conditions/WT_umap_default_names.png", plot = p6, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_umap_default_names.pdf", plot = p6, width = 8, height = 6)
+
+
+p7 <- DimPlot(so_12_SP_WT, reduction = "umap", label = TRUE, group.by = "seurat_clusters")
+ggsave("results_12_sp/individual_conditions/WT_umap_clusters.png", plot = p7, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_umap_clusters.pdf", plot = p7, width = 8, height = 6)
+
+p8 <- DimPlot(so_12_SP_WT, reduction = "umap", label = TRUE, group.by = "cell_types_2_WT")
+ggsave("results_12_sp/individual_conditions/WT_umap_cell_types.png", plot = p8, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_umap_cell_types.pdf", plot = p8, width = 8, height = 6)
+
+p9 <- DimPlot(so_12_SP_WT, reduction = "umap", label = TRUE, group.by = "sample_origin")
+ggsave("results_12_sp/individual_conditions/WT_umap_sample_origin.png", plot = p9, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_umap_sample_origin.pdf", plot = p9, width = 8, height = 6)
+
+p10 <- DimPlot(so_12_SP_WT, reduction = "umap", label = TRUE, group.by = "Phase")
+ggsave("results_12_sp/individual_conditions/WT_umap_phase.png", plot = p10, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_umap_phase.pdf", plot = p10, width = 8, height = 6)
+```
+
+
+# graficos up signatura
+
+```{r}
+# upregulated
+signature_etmr <- read.xlsx("signature/ETMRsig_PositiveGenes.xlsx")
+ortologos_rafa <- read.table("signature/orthologs_final_human_mouse.tsv")
+etmr_ortologos <- intersect(signature_etmr$GeneNames, ortologos_rafa$V1)
+signature_etmr_raton <- subset(ortologos_rafa, V1 %in% etmr_ortologos, select = "V2")
+signature_etmr_raton <- signature_etmr_raton$V2
+gene.set_up_ko <- intersect(signature_etmr_raton, rownames(so_12_SP_KO))
+gene.set_up_wt <- intersect(signature_etmr_raton, rownames(so_12_SP_WT))
+gene.set_up <- intersect(gene.set_up_ko, gene.set_up_wt)
+rm(ortologos_rafa, signature_etmr, etmr_ortologos,  signature_etmr_raton, gene.set_up_ko, gene.set_up_wt)
+```
+
+
+## celular
+
+```{r}
+# KO
+matriz1_ko <- expm1(GetAssayData(so_12_SP_KO, layer = "data")[gene.set_up, ])
+matriz1_ko <- as.data.frame(matriz1_ko)
+
+matriz1_ko <- colMeans(matriz1_ko)
+matriz1_ko <- as.data.frame(matriz1_ko)
+
+so_12_SP_KO$matriz1_ko <- matriz1_ko$matriz1_ko
+
+# WT
+matriz1_wt <- expm1(GetAssayData(so_12_SP_WT, layer = "data")[gene.set_up, ])
+matriz1_wt <- as.data.frame(matriz1_wt)
+
+matriz1_wt <- colMeans(matriz1_wt)
+matriz1_wt <- as.data.frame(matriz1_wt)
+
+so_12_SP_WT$matriz1_wt <- matriz1_wt$matriz1_wt
+```
+
+
+## cluster
+
+```{r}
+# KO
+matriz2_ko <- AverageExpression(
+  so_12_SP_KO,
+  features = gene.set_up,
+  group.by = c("cell_types_KO"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2_ko <- as.data.frame(matriz2_ko$RNA)
+
+matriz2_ko <- colMeans(matriz2_ko)
+
+matriz2_ko <- as.data.frame(matriz2_ko)
+matriz2_ko <- matriz2_ko %>% rownames_to_column("cell_types_KO")
+matriz2_ko$cell_types_KO <- gsub("-", "_", matriz2_ko$cell_types_KO)
+
+so_12_SP_KO$matriz2_ko <- matriz2_ko[so_12_SP_KO$cell_types_KO, "matriz2_ko"]
+
+
+# WT
+matriz2_wt <- AverageExpression(
+  so_12_SP_WT,
+  features = gene.set_up,
+  group.by = c("cell_types_WT"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2_wt <- as.data.frame(matriz2_wt$RNA)
+
+matriz2_wt <- colMeans(matriz2_wt)
+
+matriz2_wt <- as.data.frame(matriz2_wt)
+matriz2_wt <- matriz2_wt %>% rownames_to_column("cell_types_WT")
+matriz2_wt$cell_types_WT <- gsub("-", "_", matriz2_wt$cell_types_WT)
+
+so_12_SP_WT$matriz2_wt <- matriz2_wt[so_12_SP_WT$cell_types_WT, "matriz2_wt"]
+```
+
+## limites
+
+```{r}
+valor_maximo_absoluto_matriz1_ko <- as.numeric(quantile(abs(so_12_SP_KO$matriz1_ko), 0.99))
+valor_maximo_absoluto_matriz1_ko  
+valor_maximo_absoluto_matriz2_ko <- max(abs(so_12_SP_KO$matriz2_ko)) 
+valor_maximo_absoluto_matriz2_ko  
+
+valor_maximo_absoluto_matriz1_wt <- as.numeric(quantile(abs(so_12_SP_WT$matriz1_wt), 0.99))
+valor_maximo_absoluto_matriz1_wt  
+valor_maximo_absoluto_matriz2_wt <- max(abs(so_12_SP_WT$matriz2_wt)) 
+valor_maximo_absoluto_matriz2_wt  
+```
+[1] 1.527524
+[1] 1.20289
+[1] 1.461594
+[1] 1.229845
+
+## graficas
+
+```{r, message=FALSE}
+truncar_valores <- function(x, min_val, max_val) {
+  pmin(pmax(x, min_val), max_val)
+}
+
+# KO
+limite1 <- c(0, 1.5)
+so_12_SP_KO$matriz1_truncada_ko <- truncar_valores(so_12_SP_KO$matriz1_ko, limite1[1], limite1[2])
+FeaturePlot(so_12_SP_KO, features = "matriz1_truncada_ko") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular ko")
+
+limite2 <- c(0, 1.5)
+so_12_SP_KO$matriz2_truncada_ko <- truncar_valores(so_12_SP_KO$matriz2_ko, limite2[1], limite2[2])
+FeaturePlot(so_12_SP_KO, features = "matriz2_truncada_ko") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters ko")
+
+# WT
+limite1 <- c(0, 1.5)
+so_12_SP_WT$matriz1_truncada_wt <- truncar_valores(so_12_SP_WT$matriz1_wt, limite1[1], limite1[2])
+FeaturePlot(so_12_SP_WT, features = "matriz1_truncada_wt") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular wt")
+
+limite2 <- c(0, 1.5)
+so_12_SP_WT$matriz2_truncada_wt <- truncar_valores(so_12_SP_WT$matriz2_wt, limite2[1], limite2[2])
+FeaturePlot(so_12_SP_WT, features = "matriz2_truncada_wt") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters wt")
+```
+
+
+
+```{r}
+p1 <- FeaturePlot(so_12_SP_KO, features = "matriz1_truncada_ko") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.5)) & 
+  ggtitle("Expresión celular KO")
+ggsave("results_12_sp/individual_conditions/KO_matriz1_upregulated.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_matriz1_upregulated.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- FeaturePlot(so_12_SP_KO, features = "matriz2_truncada_ko") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.5)) & 
+  ggtitle("Expresión clusters KO")
+ggsave("results_12_sp/individual_conditions/KO_matriz2_upregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_matriz2_upregulated.pdf", plot = p2, width = 8, height = 6)
+
+p3 <- FeaturePlot(so_12_SP_WT, features = "matriz1_truncada_wt") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.5)) & 
+  ggtitle("Expresión celular WT")
+ggsave("results_12_sp/individual_conditions/WT_matriz1_upregulated.png", plot = p3, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_matriz1_upregulated.pdf", plot = p3, width = 8, height = 6)
+
+p4 <- FeaturePlot(so_12_SP_WT, features = "matriz2_truncada_wt") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.5)) & 
+  ggtitle("Expresión clusters WT")
+ggsave("results_12_sp/individual_conditions/WT_matriz2_upregulated.png", plot = p4, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_matriz2_upregulated.pdf", plot = p4, width = 8, height = 6)
+
+rm(p1, p2, p3, p4, matriz1_ko, matriz1_wt, matriz2_ko, matriz2_wt, gene.set_up, limite1, limite2, valor_maximo_absoluto_matriz1_ko, valor_maximo_absoluto_matriz1_wt, valor_maximo_absoluto_matriz2_ko, valor_maximo_absoluto_matriz2_wt, truncar_valores)
+```
+
+
+
+
+
+
+
+# graficos down signatura
+
+```{r}
+# downregulated
+signature_etmr <- read.xlsx("signature/ETMRsig_NegativeGenes_withoutfoldchange.xlsx", colNames = FALSE)
+ortologos_rafa <- read.table("signature/orthologs_final_human_mouse.tsv")
+etmr_ortologos <- intersect(signature_etmr$X1, ortologos_rafa$V1)
+signature_etmr_raton <- subset(ortologos_rafa, V1 %in% etmr_ortologos, select = "V2")
+signature_etmr_raton <- signature_etmr_raton$V2
+gene.set_down_ko <- intersect(signature_etmr_raton, rownames(so_12_SP_KO))
+gene.set_down_wt <- intersect(signature_etmr_raton, rownames(so_12_SP_WT))
+gene.set_down <- intersect(gene.set_down_ko, gene.set_down_wt)
+rm(ortologos_rafa, signature_etmr, etmr_ortologos,  signature_etmr_raton, gene.set_down_ko, gene.set_down_wt)
+```
+
+
+## celular
+
+```{r}
+# KO
+matriz1_ko <- expm1(GetAssayData(so_12_SP_KO, layer = "data")[gene.set_down, ])
+matriz1_ko <- as.data.frame(matriz1_ko)
+
+matriz1_ko <- colMeans(matriz1_ko)
+matriz1_ko <- as.data.frame(matriz1_ko)
+
+so_12_SP_KO$matriz1_ko <- matriz1_ko$matriz1_ko
+
+# WT
+matriz1_wt <- expm1(GetAssayData(so_12_SP_WT, layer = "data")[gene.set_down, ])
+matriz1_wt <- as.data.frame(matriz1_wt)
+
+matriz1_wt <- colMeans(matriz1_wt)
+matriz1_wt <- as.data.frame(matriz1_wt)
+
+so_12_SP_WT$matriz1_wt <- matriz1_wt$matriz1_wt
+```
+
+
+## cluster
+
+```{r}
+# KO
+matriz2_ko <- AverageExpression(
+  so_12_SP_KO,
+  features = gene.set_down,
+  group.by = c("cell_types_KO"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2_ko <- as.data.frame(matriz2_ko$RNA)
+
+matriz2_ko <- colMeans(matriz2_ko)
+
+matriz2_ko <- as.data.frame(matriz2_ko)
+matriz2_ko <- matriz2_ko %>% rownames_to_column("cell_types_KO")
+matriz2_ko$cell_types_KO <- gsub("-", "_", matriz2_ko$cell_types_KO)
+
+so_12_SP_KO$matriz2_ko <- matriz2_ko[so_12_SP_KO$cell_types_KO, "matriz2_ko"]
+
+
+# WT
+matriz2_wt <- AverageExpression(
+  so_12_SP_WT,
+  features = gene.set_down,
+  group.by = c("cell_types_WT"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2_wt <- as.data.frame(matriz2_wt$RNA)
+
+matriz2_wt <- colMeans(matriz2_wt)
+
+matriz2_wt <- as.data.frame(matriz2_wt)
+matriz2_wt <- matriz2_wt %>% rownames_to_column("cell_types_WT")
+matriz2_wt$cell_types_WT <- gsub("-", "_", matriz2_wt$cell_types_WT)
+
+so_12_SP_WT$matriz2_wt <- matriz2_wt[so_12_SP_WT$cell_types_WT, "matriz2_wt"]
+```
+
+## limites
+
+```{r}
+valor_maximo_absoluto_matriz1_ko <- as.numeric(quantile(abs(so_12_SP_KO$matriz1_ko), 0.99))
+valor_maximo_absoluto_matriz1_ko  
+valor_maximo_absoluto_matriz2_ko <- max(abs(so_12_SP_KO$matriz2_ko)) 
+valor_maximo_absoluto_matriz2_ko  
+
+valor_maximo_absoluto_matriz1_wt <- as.numeric(quantile(abs(so_12_SP_WT$matriz1_wt), 0.99))
+valor_maximo_absoluto_matriz1_wt  
+valor_maximo_absoluto_matriz2_wt <- max(abs(so_12_SP_WT$matriz2_wt)) 
+valor_maximo_absoluto_matriz2_wt  
+```
+[1] 0.5417971
+[1] 0.4444349
+[1] 0.5389765
+[1] 0.2911801
+
+## graficas
+
+```{r, message=FALSE}
+truncar_valores <- function(x, min_val, max_val) {
+  pmin(pmax(x, min_val), max_val)
+}
+
+# KO
+limite1 <- c(0, 0.5)
+so_12_SP_KO$matriz1_truncada_ko <- truncar_valores(so_12_SP_KO$matriz1_ko, limite1[1], limite1[2])
+FeaturePlot(so_12_SP_KO, features = "matriz1_truncada_ko") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular ko")
+
+limite2 <- c(0, 0.5)
+so_12_SP_KO$matriz2_truncada_ko <- truncar_valores(so_12_SP_KO$matriz2_ko, limite2[1], limite2[2])
+FeaturePlot(so_12_SP_KO, features = "matriz2_truncada_ko") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters ko")
+
+# WT
+limite1 <- c(0, 0.5)
+so_12_SP_WT$matriz1_truncada_wt <- truncar_valores(so_12_SP_WT$matriz1_wt, limite1[1], limite1[2])
+FeaturePlot(so_12_SP_WT, features = "matriz1_truncada_wt") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular wt")
+
+limite2 <- c(0, 0.5)
+so_12_SP_WT$matriz2_truncada_wt <- truncar_valores(so_12_SP_WT$matriz2_wt, limite2[1], limite2[2])
+FeaturePlot(so_12_SP_WT, features = "matriz2_truncada_wt") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters wt")
+```
+
+
+
+```{r}
+p1 <- FeaturePlot(so_12_SP_KO, features = "matriz1_truncada_ko") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.5)) & 
+  ggtitle("Expresión celular KO")
+ggsave("results_12_sp/individual_conditions/KO_matriz1_downregulated.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_matriz1_downregulated.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- FeaturePlot(so_12_SP_KO, features = "matriz2_truncada_ko") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.5)) & 
+  ggtitle("Expresión clusters KO")
+ggsave("results_12_sp/individual_conditions/KO_matriz2_downregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/KO_matriz2_downregulated.pdf", plot = p2, width = 8, height = 6)
+
+p3 <- FeaturePlot(so_12_SP_WT, features = "matriz1_truncada_wt") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.5)) & 
+  ggtitle("Expresión celular WT")
+ggsave("results_12_sp/individual_conditions/WT_matriz1_downregulated.png", plot = p3, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_matriz1_downregulated.pdf", plot = p3, width = 8, height = 6)
+
+p4 <- FeaturePlot(so_12_SP_WT, features = "matriz2_truncada_wt") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.5)) & 
+  ggtitle("Expresión clusters WT")
+ggsave("results_12_sp/individual_conditions/WT_matriz2_downregulated.png", plot = p4, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/individual_conditions/pdfs/WT_matriz2_downregulated.pdf", plot = p4, width = 8, height = 6)
+
+rm(p1, p2, p3, p4, matriz1_ko, matriz1_wt, matriz2_ko, matriz2_wt, gene.set_down, limite1, limite2, valor_maximo_absoluto_matriz1_ko, valor_maximo_absoluto_matriz1_wt, valor_maximo_absoluto_matriz2_ko, valor_maximo_absoluto_matriz2_wt, truncar_valores)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# monocle3
+
+```{r}
+# KO
+so_12_SP_KO_3d <- RunUMAP(
+  so_12_SP_KO, 
+  dims = 1:30, 
+  reduction = "pca", 
+  reduction.name = "umap.3d", 
+  n.components = 3
+)
+
+cds_12_SP_KO_3d <- as.cell_data_set(so_12_SP_KO_3d)
+
+recreate.partition <- c(rep(1, ncol(cds_12_SP_KO_3d)))
+names(recreate.partition) <- colnames(cds_12_SP_KO_3d)
+recreate.partition <- as.factor(recreate.partition)
+cds_12_SP_KO_3d@clusters$UMAP$partitions <- recreate.partition
+
+cds_12_SP_KO_3d@clusters$UMAP$clusters <- so_12_SP_KO$cell_types_KO
+
+cds_12_SP_KO_3d@int_colData@listData$reducedDims$UMAP <- so_12_SP_KO_3d@reductions$umap.3d@cell.embeddings
+
+plot_cells_3d(cds_12_SP_KO_3d)
+
+p3d <- plot_cells_3d(cds_12_SP_KO_3d, color_cells_by = "cell_types_KO")
+htmlwidgets::saveWidget(p3d, "cell_types_KO.html")
+
+
+# WT
+so_12_SP_WT_3d <- RunUMAP(
+  so_12_SP_WT, 
+  dims = 1:30, 
+  reduction = "pca", 
+  reduction.name = "umap.3d", 
+  n.components = 3
+)
+
+cds_12_SP_WT_3d <- as.cell_data_set(so_12_SP_WT_3d)
+
+recreate.partition <- c(rep(1, ncol(cds_12_SP_WT_3d)))
+names(recreate.partition) <- colnames(cds_12_SP_WT_3d)
+recreate.partition <- as.factor(recreate.partition)
+cds_12_SP_WT_3d@clusters$UMAP$partitions <- recreate.partition
+
+cds_12_SP_WT_3d@clusters$UMAP$clusters <- so_12_SP_WT$cell_types_WT
+
+cds_12_SP_WT_3d@int_colData@listData$reducedDims$UMAP <- so_12_SP_WT_3d@reductions$umap.3d@cell.embeddings
+
+plot_cells_3d(cds_12_SP_WT_3d)
+
+p3d <- plot_cells_3d(cds_12_SP_WT_3d, color_cells_by = "cell_types_WT")
+htmlwidgets::saveWidget(p3d, "cell_types_WT.html")
+```
+
+
+# trayectorias 3d
+
+```{r}
+# KO
+
+cds_12_SP_KO_3d <- learn_graph(cds_12_SP_KO_3d)
+
+ordenar_desde_clusters <- function(cds, cluster_names, colname = "cell_types_KO", seed = 123) {
+  set.seed(seed)
+  all_clusters <- unique(cds@colData[[colname]])
+  missing_clusters <- setdiff(cluster_names, all_clusters)
+  if (length(missing_clusters) > 0) {
+    stop(paste("Clúster(es) no encontrados:", paste(missing_clusters, collapse = ", ")))
+  }
+  root_cells <- unlist(lapply(cluster_names, function(cluster) {
+    cells_in_cluster <- colnames(cds)[cds@colData[[colname]] == cluster]
+    sample(cells_in_cluster, 1)
+  }))
+  cat("Células raíz seleccionadas:\n", paste(root_cells, collapse = ", "), "\n")
+  cds <- order_cells(cds, root_cells = root_cells)
+  return(cds)
+}
+clusters_raiz <- c("1.RDG")
+cds_12_SP_KO_3d <- ordenar_desde_clusters(cds_12_SP_KO_3d, clusters_raiz)
+
+p3d <- plot_cells_3d(cds_12_SP_KO_3d, color_cells_by = "pseudotime")
+htmlwidgets::saveWidget(p3d, "trayectorias_monocle3_ko_12_sp_1.html")
+
+cds_12_SP_KO_3d$pseudotime <- pseudotime(cds_12_SP_KO_3d)  ## guardamos los valores pseudotime
+metadata_cds_12_SP_KO_3d <- as.data.frame(colData(cds_12_SP_KO_3d))
+p1 <- ggplot(metadata_cds_12_SP_KO_3d, 
+       aes(pseudotime, reorder(cell_types_KO, pseudotime, mean), fill = cell_types_KO)) + 
+  geom_boxplot()
+
+ggsave("results_12_sp/individual_conditions/monocle3/pseudotiempo_ko_1.png", plot = p1, width = 14, height = 10, dpi = 300)
+
+p3d <- plot_cells_3d(cds_12_SP_KO_3d, color_cells_by = "Phase")
+htmlwidgets::saveWidget(p3d, "Phase_KO.html")
+
+saveRDS(cds_12_SP_KO_3d, file = "cds_12_SP_KO_3d.rds")
+cds_12_SP_KO_3d <- readRDS('cds_12_SP_KO_3d.rds')
+
+
+
+
+
+# WT
+
+cds_12_SP_WT_3d <- learn_graph(cds_12_SP_WT_3d)
+
+ordenar_desde_clusters <- function(cds, cluster_names, colname = "cell_types_WT", seed = 123) {
+  set.seed(seed)
+  all_clusters <- unique(cds@colData[[colname]])
+  missing_clusters <- setdiff(cluster_names, all_clusters)
+  if (length(missing_clusters) > 0) {
+    stop(paste("Clúster(es) no encontrados:", paste(missing_clusters, collapse = ", ")))
+  }
+  root_cells <- unlist(lapply(cluster_names, function(cluster) {
+    cells_in_cluster <- colnames(cds)[cds@colData[[colname]] == cluster]
+    sample(cells_in_cluster, 1)
+  }))
+  cat("Células raíz seleccionadas:\n", paste(root_cells, collapse = ", "), "\n")
+  cds <- order_cells(cds, root_cells = root_cells)
+  return(cds)
+}
+clusters_raiz <- c("0.RDG")
+cds_12_SP_WT_3d <- ordenar_desde_clusters(cds_12_SP_WT_3d, clusters_raiz)
+
+p3d <- plot_cells_3d(cds_12_SP_WT_3d, color_cells_by = "pseudotime")
+htmlwidgets::saveWidget(p3d, "trayectorias_monocle3_wt_12_sp_0.html")
+
+cds_12_SP_WT_3d$pseudotime <- pseudotime(cds_12_SP_WT_3d)  ## guardamos los valores pseudotime
+metadata_cds_12_SP_WT_3d <- as.data.frame(colData(cds_12_SP_WT_3d))
+p1 <- ggplot(metadata_cds_12_SP_WT_3d, 
+       aes(pseudotime, reorder(cell_types_WT, pseudotime, mean), fill = cell_types_WT)) + 
+  geom_boxplot()
+
+ggsave("results_12_sp/individual_conditions/monocle3/pseudotiempo_wt_0.png", plot = p1, width = 14, height = 10, dpi = 300)
+
+
+p3d <- plot_cells_3d(cds_12_SP_WT_3d, color_cells_by = "Phase")
+htmlwidgets::saveWidget(p3d, "Phase_WT.html")
+
+saveRDS(cds_12_SP_WT_3d, file = "cds_12_SP_WT_3d.rds")
+cds_12_SP_WT_3d <- readRDS('cds_12_SP_WT_3d.rds')
+```
+
+
+```{r}
+rm(cds_12_SP_KO_3d, cds_12_SP_WT_3d, p3d, so_12_SP_KO_3d, so_12_SP_WT_3d, recreate.partition)
+```
+
+# trayectorias 2d
+
+```{r}
+## ko
+cds_ko <- as.cell_data_set(so_12_SP_KO)
+recreate.partition <- c(rep(1, ncol(cds_ko)))
+names(recreate.partition) <- colnames(cds_ko)
+recreate.partition <- as.factor(recreate.partition)
+cds_ko@clusters$UMAP$partitions <- recreate.partition
+cds_ko@clusters$UMAP$clusters <- so_12_SP_KO$cell_types_KO
+cds_ko@int_colData@listData$reducedDims$UMAP <- so_12_SP_KO@reductions$umap@cell.embeddings
+plot_cells(cds_ko)
+cds_ko <- learn_graph(cds_ko)
+plot_cells(cds_ko,
+           label_groups_by_cluster = TRUE,
+           label_leaves = FALSE,
+           label_branch_points = FALSE)
+cds_ko2 <- choose_graph_segments(cds_ko)
+
+
+## wt
+cds_wt <- as.cell_data_set(so_12_SP_WT)
+recreate.partition <- c(rep(1, ncol(cds_wt)))
+names(recreate.partition) <- colnames(cds_wt)
+recreate.partition <- as.factor(recreate.partition)
+cds_wt@clusters$UMAP$partitions <- recreate.partition
+cds_wt@clusters$UMAP$clusters <- so_12_SP_WT$cell_types_WT
+cds_wt@int_colData@listData$reducedDims$UMAP <- so_12_SP_WT@reductions$umap@cell.embeddings
+plot_cells(cds_wt)
+cds_wt <- learn_graph(cds_wt)
+plot_cells(cds_wt,
+           label_groups_by_cluster = TRUE,
+           label_leaves = TRUE,
+           label_branch_points = TRUE)
+cds_wt <- choose_graph_segments(cds_wt)
+```
+
+
+# pasar objetos a python https://smorabit.github.io/blog/2021/velocyto/
+
+```{r}
+## KO
+# save metadata table
+so_12_SP_KO$barcode <- colnames(so_12_SP_KO)
+so_12_SP_KO$UMAP_1 <- so_12_SP_KO@reductions$umap@cell.embeddings[,1]
+so_12_SP_KO$UMAP_2 <- so_12_SP_KO@reductions$umap@cell.embeddings[,2]
+write.csv(so_12_SP_KO@meta.data, file='velocyto_scvelo_12_sp/ko/metadata_ko.csv', quote=F, row.names=F)
+
+# write expression counts matrix
+counts_matrix <- GetAssayData(so_12_SP_KO, assay='RNA', layer ='counts')
+writeMM(counts_matrix, 'velocyto_scvelo_12_sp/ko/counts_ko.mtx')
+
+# write dimesnionality reduction matrix
+write.csv(so_12_SP_KO@reductions$pca@cell.embeddings, file='velocyto_scvelo_12_sp/ko/pca_ko.csv', quote=F, row.names=F)
+
+# write gene names
+write.table(
+  data.frame('gene'=rownames(counts_matrix)),file='velocyto_scvelo_12_sp/ko/gene_names_ko.csv',
+  quote=F,row.names=F,col.names=F
+)
+
+
+
+
+## WT
+
+# save metadata table
+so_12_SP_WT$barcode <- colnames(so_12_SP_WT)
+so_12_SP_WT$UMAP_1 <- so_12_SP_WT@reductions$umap@cell.embeddings[,1]
+so_12_SP_WT$UMAP_2 <- so_12_SP_WT@reductions$umap@cell.embeddings[,2]
+write.csv(so_12_SP_WT@meta.data, file='velocyto_scvelo_12_sp/wt/metadata_wt.csv', quote=F, row.names=F)
+
+# write expression counts matrix
+counts_matrix <- GetAssayData(so_12_SP_WT, assay='RNA', layer ='counts')
+writeMM(counts_matrix, 'velocyto_scvelo_12_sp/wt/counts_wt.mtx')
+
+# write dimesnionality reduction matrix
+write.csv(so_12_SP_WT@reductions$pca@cell.embeddings, file='velocyto_scvelo_12_sp/wt/pca_wt.csv', quote=F, row.names=F)
+
+# write gene names
+write.table(
+  data.frame('gene'=rownames(counts_matrix)),file='velocyto_scvelo_12_sp/wt/gene_names_wt.csv',
+  quote=F,row.names=F,col.names=F
+)
+```
+
+
+
+# correlaciones
+
+```{r}
+avg_expr_ko <- AverageExpression(
+  so_12_SP_KO,
+  group.by = "cell_types_KO")$RNA
+
+avg_expr_wt <- AverageExpression(
+  so_12_SP_WT,
+  group.by = "cell_types_WT")$RNA
+
+avg_expr_ko <- as.matrix(avg_expr_ko)
+avg_expr_wt <- as.matrix(avg_expr_wt)
+
+common_genes <- intersect(rownames(avg_expr_ko), rownames(avg_expr_wt))
+
+avg_expr_ko <- avg_expr_ko[common_genes, ]
+avg_expr_wt <- avg_expr_wt[common_genes, ]
+
+cor_matrix <- cor(avg_expr_ko, avg_expr_wt, method = "pearson")
+
+p1 <- pheatmap(cor_matrix,
+         main = "All genes",
+         fontsize_row = 8,
+         fontsize_col = 8,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         display_numbers = TRUE, width = 9, height = 7)
+p1
+```
+
+```{r}
+pdf("results_12_sp/individual_conditions/pdfs/heatmap_all_genes_cor.pdf", width = 9, height = 7)
+print(p1)
+dev.off()
+png("results_12_sp/individual_conditions/heatmap_all_genes_cor.png", width = 900, height = 700)
+print(p1)
+dev.off()
+
+rm(avg_expr_ko, avg_expr_wt, cor_matrix, p1, common_genes)
+```
+
+
+
+
+
+
+
+
+# guardado objetos analizados
+
+```{r}
+saveRDS(so_12_SP_KO, file = "so_12_SP_KO_analyzed.rds")
+saveRDS(so_12_SP_WT, file = "so_12_SP_WT_analyzed.rds")
+```
+
+```{r}
+so_12_SP_KO <- readRDS("so_12_SP_KO_analyzed.rds")
+so_12_SP_WT <- readRDS("so_12_SP_WT_analyzed.rds")
+```
+
+```{r}
+so_12_SP_KO
+so_12_SP_WT
+```
+
+# . 
+
+# preparamos y guardamos los objetos para el merge
+
+```{r}
+so_12_SP_KO_post <- readRDS("so_12_SP_KO_postfiltered.rds")
+so_12_SP_WT_post <- readRDS("so_12_SP_WT_postfiltered.rds")
+```
+
+```{r}
+# KO
+celulas_filtradas <- colnames(so_12_SP_KO)
+so_12_SP_KO_post <- subset(so_12_SP_KO_post, cells = celulas_filtradas)
+
+so_12_SP_KO_post$Phase <- so_12_SP_KO$Phase
+so_12_SP_KO_post$cell_types_KO <- so_12_SP_KO$cell_types_KO
+so_12_SP_KO_post$cell_types_2_KO <- so_12_SP_KO$cell_types_2_KO
+so_12_SP_KO_post$cell_types_2 <- so_12_SP_KO$cell_types_2_KO
+
+# WT
+so_12_SP_WT_post$Phase <- so_12_SP_WT$Phase
+so_12_SP_WT_post$cell_types_WT <- so_12_SP_WT$cell_types_WT
+so_12_SP_WT_post$cell_types_2_WT <- so_12_SP_WT$cell_types_2_WT
+so_12_SP_WT_post$cell_types_2 <- so_12_SP_WT$cell_types_2_WT
+```
+
+```{r}
+# objetos sin analizar pero con notación 
+saveRDS(so_12_SP_KO_post, file = "so_12_SP_KO_forMerging.rds")
+saveRDS(so_12_SP_WT_post, file = "so_12_SP_WT_forMerging.rds")
+```
+
+```{r}
+so_12_SP_KO <- readRDS("so_12_SP_KO_forMerging.rds")
+so_12_SP_WT <- readRDS("so_12_SP_WT_forMerging.rds")
+```
+ESTE OBJETO KO NO CONTIENE LOS C 12, 20, 25. YA FILTRADO.
+
+
+# unión de los objetos KO + WT
+
+```{r}
+so_12_SP_merge <- merge(so_12_SP_KO, y = so_12_SP_WT, 
+                     add.cell.ids = c("so_12_SP_KO", "so_12_SP_WT"))
+so_12_SP_merge
+```
+
+```{r}
+so_12_SP_merge <- JoinLayers(so_12_SP_merge)
+so_12_SP_merge
+```
+
+```{r}
+saveRDS(so_12_SP_merge, file = "so_12_SP_merge_notAnalyzed.rds")
+so_12_SP_merge <- readRDS("so_12_SP_merge_notAnalyzed.rds")
+```
+
+
+# repetimos el workframe
+
+```{r}
+so_12_SP_merge <- NormalizeData(so_12_SP_merge)
+so_12_SP_merge <- FindVariableFeatures(so_12_SP_merge)
+so_12_SP_merge <- ScaleData(so_12_SP_merge)
+so_12_SP_merge <- RunPCA(so_12_SP_merge)
+ElbowPlot(so_12_SP_merge, reduction = "pca", ndims = 50)
+so_12_SP_merge <- FindNeighbors(so_12_SP_merge, dims = 1:30, reduction = "pca")
+so_12_SP_merge <- RunUMAP(so_12_SP_merge, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
+```
+
+
+
+# clustree
+
+```{r}
+so_12_SP_merge_clustree <- so_12_SP_merge
+so_12_SP_merge_clustree <- FindNeighbors(so_12_SP_merge_clustree, dims = 1:30, reduction = "pca")
+so_12_SP_merge_clustree <- FindClusters(so_12_SP_merge_clustree, resolution = seq(0.5, 2, 0.1))
+p1 <- clustree(so_12_SP_merge_clustree@meta.data, prefix = "RNA_snn_res.")
+p1
+```
+
+```{r}
+ggsave("results_12_sp/merge/clustree_plot_12_sp.png", plot = p1, width = 12, height = 14)
+ggsave("results_12_sp/merge/pdfs/clustree_plot_12_sp.pdf", plot = p1, width = 12, height = 14)
+```
+
+
+# clusterizacion
+
+```{r}
+so_12_SP_merge <- FindClusters(so_12_SP_merge, resolution = 1.1, cluster.name = "unintegrated_clusters")
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", label = T)
+```
+
+
+```{r}
+metadata <- so_12_SP_merge@meta.data
+prop_df <- metadata %>%
+  group_by(seurat_clusters, sample_origin) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(proportion = n / sum(n))
+
+sample_colors <- c(
+  "12_KO1_SP" = "#698B69",
+  "12_KO2_SP" = "#9BCD9B",
+  "12_KO3_SP" = "#B4EEB4",
+  "12_WT1_SP" = "#5D478B",
+  "12_WT2_SP" = "#8968CD",
+  "12_WT3_SP" = "#AB82FF"
+)
+
+p1 <- ggplot(prop_df, aes(x = seurat_clusters, y = proportion, fill = sample_origin)) +
+  geom_bar(stat = "identity", position = "fill") +
+  ylab("Proporción de células") +
+  xlab("Cluster") +
+  labs(fill = "Muestra") +
+  scale_fill_manual(values = sample_colors) +
+  theme_minimal()
+p1
+
+ggsave("results_12_sp/merge/proporcion_clusters.png", p1, width = 9, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/proporcion_clusters.pdf", p1, width = 9, height = 6)
+```
+
+
+## tabla numero celulas cluster
+
+```{r}
+df_12_SP <- so_12_SP_merge@meta.data %>%
+  group_by(seurat_clusters, condition) %>%       
+  summarise(n_cells = n(), .groups = "drop") %>%
+  tidyr::pivot_wider(
+    names_from = condition,
+    values_from = n_cells,
+    names_prefix = "n_cells_"
+  ) %>%
+  mutate(
+    n_cells_WT = ifelse(is.na(n_cells_WT), 0, n_cells_WT),
+    n_cells_KO = ifelse(is.na(n_cells_KO), 0, n_cells_KO),
+    n_cells_total = n_cells_WT + n_cells_KO,
+    AgeRegion = "12_SP"
+  ) %>%
+  relocate(AgeRegion, seurat_clusters, .before = everything())
+
+```
+
+
+```{r}
+write.csv(
+  df_12_SP,
+  "results_12_sp/merge/tablas_num_cels_cluster_12_sp.csv",
+  row.names = FALSE
+)
+```
+
+
+
+
+
+
+# cell division scores merge
+
+Vamos a ver la fase recalculándola con el objeto merge para ver si clasifica las celulas igual que haciendolo por condiciones:
+ 
+```{r}
+so_12_SP_merge$Phase_per_condition <- so_12_SP_merge$Phase
+
+mmus_s = gorth(cc.genes$s.genes,
+               source_organism = "hsapiens", 
+               target_organism = "mmusculus")$ortholog_name
+mmus_g2m = gorth(cc.genes$g2m.genes, 
+                 source_organism = "hsapiens", 
+                 target_organism = "mmusculus")$ortholog_name
+so_12_SP_merge <- CellCycleScoring(object = so_12_SP_merge,
+                              g2m.features = mmus_g2m,
+                                s.features = mmus_s)
+```
+
+```{r}
+table(so_12_SP_merge$Phase_per_condition)
+table(so_12_SP_merge$Phase)
+addmargins(table(so_12_SP_merge$Phase_per_condition, so_12_SP_merge$Phase))
+```
+
+```{r}
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "Phase_per_condition", label = T)
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "Phase", label = T)
+```
+
+
+Para la notación nos quedaremos con el cálculo de la fase por condición
+
+
+# anotacion paper (a partir de la anotacion individual)
+
+```{r}
+meta <- so_12_SP_merge@meta.data
+
+meta$cells <- rownames(meta)
+identical(meta$cells, rownames(meta))
+```
+
+Primero miramos si los clusters del objeto merge tienen celulas de mas de un tipo celular:
+
+```{r}
+table(meta$seurat_clusters, meta$cell_types_2)
+```
+
+```{r}
+meta <- meta %>%
+  group_by(seurat_clusters) %>%
+  mutate(cluster_cell_type_2 = paste0(unique(seurat_clusters), ".", 
+                                 names(which.max(table(cell_types_2)))))
+```
+
+```{r}
+table(meta$cluster_cell_type_2, meta$cell_types_2)
+```
+
+```{r}
+meta$cluster_cell_type_2[meta$cluster_cell_type_2 == "19.GLUT_neuron"] <- "19.GLUT_IPC_neuron"
+meta$cluster_cell_type_2[meta$cluster_cell_type_2 == "26.GABA_neuron"] <- "26.GABA_IPC_neuron"
+meta$cluster_cell_type_2[meta$cluster_cell_type_2 == "28.RDG"] <- "28.RDG_IPC"
+meta$cluster_cell_type_2[meta$cluster_cell_type_2 == "3.GABA_neuron"] <- "3.GABA_IPC_neuron"
+meta$cluster_cell_type_2[meta$cluster_cell_type_2 == "30.GLUT_IPC"] <- "30.RDG_GLUT_IPC"
+
+table(meta$cluster_cell_type_2, meta$cell_types_2)
+prop.table(table(meta$cluster_cell_type_2, meta$cell_types_2), margin = 1)
+```
+
+```{r}
+meta <- meta %>%
+  mutate(col_unida = coalesce(cell_types_KO, cell_types_WT))
+
+meta <- meta %>%
+  mutate(region_sp = case_when(
+    grepl("caudal_like", col_unida) ~ "caudal_like",
+    grepl("rostral_like", col_unida) ~ "rostral_like",
+    TRUE ~ NA_character_
+  ))
+
+
+table(meta$region_sp)
+```
+
+
+```{r}
+table(meta$cluster_cell_type_2, meta$region_sp)
+```
+
+```{r}
+meta <- meta %>%
+  group_by(cluster_cell_type_2) %>%
+  mutate(cluster_cell_type_2 = case_when(
+    grepl("\\.GABA_IPC$|\\.GABA_IPC_neuron$|\\.GABA_neuron$", cluster_cell_type_2) ~ {
+      # contar caudal vs rostral
+      counts <- table(region_sp)
+      if (length(counts) == 0) {
+        cluster_cell_type_2
+      } else {
+        paste0(cluster_cell_type_2, "_", names(which.max(counts)))
+      }
+    },
+    TRUE ~ cluster_cell_type_2
+  )) %>%
+  ungroup()
+
+table(meta$cluster_cell_type_2, meta$region_sp)
+```
+
+
+
+Ahora le añadimos a las progenitoras la fase del ciclo en la que se encuentren:
+
+```{r}
+meta_subset <- meta %>%
+  filter(str_detect(cluster_cell_type_2, "RDG|IPC"))
+meta_subset <- meta_subset %>%
+  filter(!cluster_cell_type_2 %in% c("19.GLUT_IPC_neuron",
+                                     "26.GABA_IPC_neuron_rostral_like",
+                                     "3.GABA_IPC_neuron"))
+table(meta_subset$cluster_cell_type_2, meta_subset$cell_types_2)
+```
+
+```{r}
+table(meta_subset$cluster_cell_type_2, meta_subset$Phase_per_condition)
+#table(meta_subset$cluster_cell_type_2, meta_subset$Phase)
+```
+
+Como hay celulas en diferentes fases dentro de un mismo cluster, vamos a añadirle el nombre de fase siempre y cuando la fase sea mayor o igual a un tercio de las celulas de ese cluster:
+
+```{r}
+meta_subset <- meta_subset %>%
+  group_by(cluster_cell_type_2) %>%
+  mutate(
+    total_cells = n(),
+    n_G1  = sum(Phase_per_condition == "G1"),
+    n_S   = sum(Phase_per_condition == "S"),
+    n_G2M = sum(Phase_per_condition == "G2M"),
+    add_G1  = n_G1  > total_cells/3,
+    add_S   = n_S   > total_cells/3,
+    add_G2M = n_G2M > total_cells/3,
+    cluster_cell_type_2_phase = paste0(
+      cluster_cell_type_2,
+      ifelse(add_G1,  "_G1",  ""),
+      ifelse(add_S,   "_S",   ""),
+      ifelse(add_G2M, "_G2M", "")
+    )
+  ) %>%
+  ungroup()
+```
+
+
+```{r}
+table(meta_subset$cluster_cell_type_2_phase, meta_subset$Phase_per_condition)
+
+round(addmargins(prop.table(table(meta_subset$cluster_cell_type_2_phase, meta_subset$Phase_per_condition), margin = 1)), 3)
+```
+
+```{r}
+meta <- meta %>%
+  left_join(
+    meta_subset %>% select(cells, cluster_cell_type_2_phase),
+    by = "cells"
+  ) %>%
+  mutate(
+    cluster_cell_type_2_phase = coalesce(cluster_cell_type_2_phase, cluster_cell_type_2)
+  )
+```
+
+```{r}
+identical(rownames(so_12_SP_merge@meta.data), meta$cells)
+# si es true podemos unir la columna directamente asi:
+so_12_SP_merge$cluster_cell_type <- meta$cluster_cell_type_2
+so_12_SP_merge$cluster_cell_type_phase <- meta$cluster_cell_type_2_phase
+```
+
+```{r}
+# pasarlos a factor y ordenarlos:
+nums <- as.numeric(sub("\\..*", "", unique(so_12_SP_merge$cluster_cell_type)))
+sorted <- unique(so_12_SP_merge$cluster_cell_type)[order(nums)]
+sorted
+so_12_SP_merge$cluster_cell_type <- factor(so_12_SP_merge$cluster_cell_type, 
+                                           levels = sorted)
+
+nums <- as.numeric(sub("\\..*", "", unique(so_12_SP_merge$cluster_cell_type_phase)))
+sorted <- unique(so_12_SP_merge$cluster_cell_type_phase)[order(nums)]
+sorted
+so_12_SP_merge$cluster_cell_type_phase <- factor(so_12_SP_merge$cluster_cell_type_phase, 
+                                           levels = sorted)
+```
+
+
+## añadir condition a la variable
+
+```{r}
+so_12_SP_merge$cluster_cell_type_condition <- paste(
+  so_12_SP_merge$cluster_cell_type,
+  so_12_SP_merge$condition,
+  sep = "_"
+)
+```
+
+# figuras marcadores
+
+Figuras expresion marcadores:
+
+```{r}
+save_marker_featureplots <- function(output_dir, seurat_obj, markers_list) {
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+
+  pdf_dir <- file.path(output_dir, "0pdfs")
+  if (!dir.exists(pdf_dir)) {
+    dir.create(pdf_dir)
+  }
+
+  obj_name <- deparse(substitute(seurat_obj))
+
+  for (cell_type in names(markers_list)) {
+    cat("Procesando tipo celular:", cell_type, "\n")
+
+    cell_dir <- file.path(output_dir, cell_type)
+    if (!dir.exists(cell_dir)) {
+      dir.create(cell_dir)
+    }
+    markers <- markers_list[[cell_type]]
+
+    for (gene in markers) {
+      cat("  Generando FeaturePlot para:", gene, "\n")
+
+      p <- FeaturePlot(seurat_obj, features = gene) +
+        ggtitle(paste0(gene, " - ", cell_type))
+
+      file_base <- paste0(obj_name, "_", gene)
+
+      png_path <- file.path(cell_dir, paste0(file_base, ".png"))
+      ggsave(filename = png_path, plot = p, width = 6, height = 5, dpi = 300)
+
+      pdf_path <- file.path(pdf_dir, paste0(file_base, ".pdf"))
+      ggsave(filename = pdf_path, plot = p, width = 6, height = 5)
+    }
+  }
+}
+```
+
+```{r}
+markers_list <- list(
+  cajal_retzius = c("Reln", "Lhx5"),
+  ipc = c("Ascl1", "Gadd45g", "Btg2", "Eomes"),
+  cycling = c("Top2a", "Mki67", "Aurka"),
+  neuron = c("Snap25", "Tubb3", "Dsp", "Dner"),
+  glutamatergic = c("Slc17a6", "Emx1", "Tbr1"),
+  gabaergic = c("Gad1", "Gad2", "Dlx2", "Dlx1"),
+  rostral_like = c("Isl1", "Gsx2"),
+  caudal_like = c("Nkx2-1", "Shh", "Lhx6"),
+  rdg = c("Nes", "Ccnd1", "Ptn", "Hmga2", "Hes1", "Hes5", "Fabp7", "Slc1a3",  "Pax6", "Vim", "Sox2"),
+  nec = c("Prtg", "Wnt8b", "Id3")
+)
+```
+
+```{r}
+save_marker_featureplots(
+  output_dir = "results_12_sp/merge/biomarcadores/",
+  seurat_obj = so_12_SP_merge,
+  markers_list = markers_list
+)
+```
+
+
+
+# biomarcadores
+
+```{r}
+markers_12_SP <- FindAllMarkers(
+  so_12_SP_merge,
+  only.pos = TRUE,
+  min.pct = 0.1,
+  logfc.threshold = 0.25,
+  test.use = "wilcox"
+)
+
+markers_12_SP_filt <- markers_12_SP %>%
+  filter(p_val_adj <= 0.05, avg_log2FC >= 0.25) %>%
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 20) %>%
+  ungroup()
+
+markers_12_SP_genes <- markers_12_SP_filt %>%
+  mutate(ClusterNumber = as.numeric(as.character(cluster))) %>%
+  group_by(ClusterNumber) %>%
+  summarise(
+    Top20Genes = paste(gene, collapse = ", ")
+  ) %>%
+  ungroup()
+
+
+cluster_names <- data.frame(
+  ClusterNumber = seq_along(levels(so_12_SP_merge@meta.data[["cluster_cell_type_phase"]])) - 1,
+  ClusterName = levels(so_12_SP_merge@meta.data[["cluster_cell_type_phase"]])
+)
+
+markers_12_SP_genes <- markers_12_SP_genes %>%
+  left_join(cluster_names, by = "ClusterNumber") %>%
+  select(ClusterNumber, ClusterName, Top20Genes)
+
+
+
+write.csv(
+  markers_12_SP,
+  "results_12_sp/merge/biomarcadores/markers_12_SP_full.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  markers_12_SP_filt,
+  "results_12_sp/merge/biomarcadores/markers_12_SP_filtered_top20.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  markers_12_SP_genes,
+  "results_12_sp/merge/biomarcadores/markers_12_SP_top20genes_justnames.csv",
+  row.names = FALSE
+)
+```
+
+# graficos umap
+
+```{r}
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", label = T)
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "condition", label = T)
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "sample_origin", label = T)
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", label = T, group.by = "Phase")
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cell_types_KO", label = T, label.size = 2.8) + NoLegend()
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cell_types_2_KO", label = T)
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cell_types_WT", label = T, label.size = 2.8) + NoLegend()
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cell_types_2_WT", label = T)
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cell_types_2", label = T)
+
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cluster_cell_type", label = T)
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cluster_cell_type_phase", label = T)
+```
+
+
+```{r}
+p1 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", label = TRUE)
+ggsave("results_12_sp/merge/umap_default.png", p1, width = 8, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_default.pdf", p1, width = 8, height = 5)
+
+p1 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated") + NoLegend()
+ggsave("results_12_sp/merge/umap_default_2.png", p1, width = 8, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_default_2.pdf", p1, width = 8, height = 5)
+
+p2 <- DimPlot(
+  so_12_SP_merge, 
+  reduction = "umap.unintegrated", 
+  group.by = "condition"
+) + 
+  scale_color_manual(values = c("KO" = "#9BCD9B", "WT" = "#8968CD"))
+ggsave("results_12_sp/merge/umap_condition.png", p2, width = 8, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_condition.pdf", p2, width = 8, height = 5)
+
+p3 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "sample_origin")
+ggsave("results_12_sp/merge/umap_sample_origin.png", p3, width = 8, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_sample_origin.pdf", p3, width = 8, height = 5)
+
+
+p3 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cluster_cell_type")
+ggsave("results_12_sp/merge/umap_cluster_cell_type.png", p3, width = 14, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_cluster_cell_type.pdf", p3, width = 14, height = 5)
+
+p3 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cluster_cell_type_phase")
+ggsave("results_12_sp/merge/umap_cluster_cell_type_phase.png", p3, width = 14, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_cluster_cell_type_phase.pdf", p3, width = 14, height = 5)
+
+
+
+p4 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "Phase", label = TRUE)
+ggsave("results_12_sp/merge/umap_phase.png", p4, width = 8, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_phase.pdf", p4, width = 8, height = 5)
+
+p5 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cell_types_KO", label = TRUE, label.size = 2.8) + NoLegend()
+ggsave("results_12_sp/merge/umap_cell_types_KO.png", p5, width = 8, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_cell_types_KO.pdf", p5, width = 8, height = 5)
+
+p6 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cell_types_2_KO", label = TRUE)
+ggsave("results_12_sp/merge/umap_cell_types_2_KO.png", p6, width = 8, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_cell_types_2_KO.pdf", p6, width = 8, height = 5)
+
+p7 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cell_types_WT", label = TRUE, label.size = 2.8) + NoLegend()
+ggsave("results_12_sp/merge/umap_cell_types_WT.png", p7, width = 8, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_cell_types_WT.pdf", p7, width = 8, height = 5)
+
+p8 <- DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cell_types_2_WT", label = TRUE)
+ggsave("results_12_sp/merge/umap_cell_types_2_WT.png", p8, width = 8, height = 5, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/umap_cell_types_2_WT.pdf", p8, width = 8, height = 5)
+```
+
+```{r}
+table(so_12_SP_merge@meta.data$cell_types_WT[so_12_SP_merge@meta.data$seurat_clusters == 5])
+```
+
+# graficos up signatura
+
+```{r}
+# upregulated
+signature_etmr <- read.xlsx("signature/ETMRsig_PositiveGenes.xlsx")
+ortologos_rafa <- read.table("signature/orthologs_final_human_mouse.tsv")
+etmr_ortologos <- intersect(signature_etmr$GeneNames, ortologos_rafa$V1)
+signature_etmr_raton <- subset(ortologos_rafa, V1 %in% etmr_ortologos, select = "V2")
+signature_etmr_raton <- signature_etmr_raton$V2
+gene.set_up <- intersect(signature_etmr_raton, rownames(so_12_SP_merge))
+rm(ortologos_rafa, signature_etmr, etmr_ortologos,  signature_etmr_raton)
+```
+
+
+## celular
+
+```{r}
+matriz1 <- expm1(GetAssayData(so_12_SP_merge, layer = "data")[gene.set_up, ])
+matriz1 <- as.data.frame(matriz1)
+
+matriz1 <- colMeans(matriz1)
+matriz1 <- as.data.frame(matriz1)
+
+so_12_SP_merge$matriz1 <- matriz1$matriz1
+```
+
+
+## cluster
+
+```{r}
+matriz2 <- AverageExpression(
+  so_12_SP_merge,
+  features = gene.set_up,
+  group.by = c("seurat_clusters"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2 <- as.data.frame(matriz2$RNA)
+
+matriz2 <- colMeans(matriz2)
+
+matriz2 <- as.data.frame(matriz2)
+matriz2 <- matriz2 %>% rownames_to_column("seurat_clusters")
+
+so_12_SP_merge$matriz2 <- matriz2[so_12_SP_merge$seurat_clusters, "matriz2"]
+```
+
+## cluster y condicion
+
+```{r}
+so_12_SP_merge$cluster_condition <- as.factor(paste(so_12_SP_merge$seurat_clusters, so_12_SP_merge$condition, sep = "_"))
+
+matriz3 <- AverageExpression(
+  so_12_SP_merge,
+  features = gene.set_up,
+  group.by = "cluster_condition",
+  assays = "RNA", 
+  layer = "data"
+)
+matriz3 <- as.data.frame(matriz3$RNA)
+
+matriz3 <- colMeans(matriz3)
+
+matriz3 <- as.data.frame(matriz3)
+matriz3 <- matriz3 %>% rownames_to_column("cluster_condition")
+matriz3$cluster_condition <- gsub("-", "_", matriz3$cluster_condition)
+
+so_12_SP_merge$matriz3 <- matriz3[so_12_SP_merge$cluster_condition, "matriz3"]
+```
+
+## limites
+
+```{r}
+valor_maximo_absoluto_matriz1 <- as.numeric(quantile(abs(so_12_SP_merge$matriz1), 0.99))
+valor_maximo_absoluto_matriz1  
+valor_maximo_absoluto_matriz2 <- max(abs(so_12_SP_merge$matriz2)) 
+valor_maximo_absoluto_matriz2  
+valor_maximo_absoluto_matriz3 <- max(abs(so_12_SP_merge$matriz3), na.rm = TRUE)
+valor_maximo_absoluto_matriz3 
+```
+[1] 1.45039
+[1] 1.173181
+[1] 1.173599
+
+
+## graficas
+
+```{r, message=FALSE}
+truncar_valores <- function(x, min_val, max_val) {
+  pmin(pmax(x, min_val), max_val)
+}
+
+limite1 <- c(0, 1.2)
+so_12_SP_merge$matriz1_truncada <- truncar_valores(so_12_SP_merge$matriz1, limite1[1], limite1[2])
+FeaturePlot(so_12_SP_merge, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular")
+
+limite2 <- c(0, 1.2)
+so_12_SP_merge$matriz2_truncada <- truncar_valores(so_12_SP_merge$matriz2, limite2[1], limite2[2])
+FeaturePlot(so_12_SP_merge, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters")
+
+limite3 <- c(0, 1.2)
+so_12_SP_merge$matriz3_truncada <- truncar_valores(so_12_SP_merge$matriz3, limite3[1], limite3[2])
+FeaturePlot(so_12_SP_merge, features = "matriz3_truncada", split.by = "condition") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite3)
+```
+
+```{r}
+p1 <- FeaturePlot(so_12_SP_merge, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.2)) & 
+  ggtitle("Expresión celular")
+ggsave("results_12_sp/merge/matriz1_upregulated.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz1_upregulated.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- FeaturePlot(so_12_SP_merge, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.2)) & 
+  ggtitle("Expresión clusters")
+ggsave("results_12_sp/merge/matriz2_upregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz2_upregulated.pdf", plot = p2, width = 8, height = 6)
+
+so_12_SP_merge$condition <- factor(so_12_SP_merge$condition, levels = c("WT", "KO"))
+
+p3 <- FeaturePlot(so_12_SP_merge, features = "matriz3_truncada", split.by = "condition") & scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.2))
+ggsave("results_12_sp/merge/matriz3_upregulated.png", plot = p3, width = 14, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz3_upregulated.pdf", plot = p3, width = 14, height = 6)
+```
+
+## vlnplots
+
+```{r}
+p <- VlnPlot(
+  object = so_12_SP_merge,
+  features = "matriz1",
+  split.by = "condition",
+  pt.size = 0,
+  split.plot = TRUE
+) + 
+  scale_fill_manual(values = c("KO" = "#9BCD9B", "WT" = "#8968CD"))
+p
+
+ggsave("results_12_sp/merge/vlnplot_expresion_signatura.png", plot = p, width = 10, height = 6)
+ggsave("results_12_sp/merge/pdfs/vlnplot_expresion_signatura.pdf", plot = p, width = 6, height = 4)
+```
+
+
+## cluster ko - cluster wt: matriz 4
+
+```{r}
+matriz4 <- matriz3 %>%
+  separate(cluster_condition, into = c("cluster", "condition"), sep = "_") %>%
+  mutate(seurat_clusters = as.integer(cluster))
+
+matriz4 <- matriz4 %>%
+  pivot_wider(names_from = condition, values_from = matriz3)
+
+matriz4 <- matriz4 %>%
+  mutate(matriz4 = KO - WT)
+
+matriz4 <- matriz4 %>%
+  select(seurat_clusters, matriz4)
+
+matriz4 <- as.data.frame(matriz4)
+
+matriz4$seurat_clusters <- as.character(matriz4$seurat_clusters)
+so_12_SP_merge$seurat_clusters <- as.character(so_12_SP_merge$seurat_clusters)
+
+rownames(matriz4) <- matriz4$seurat_clusters
+
+so_12_SP_merge$matriz4 <- matriz4[so_12_SP_merge$seurat_clusters, "matriz4"]
+```
+
+```{r}
+valor_maximo_absoluto_matriz4 <- max(abs(so_12_SP_merge$matriz4), na.rm = TRUE)
+p1 <- FeaturePlot(so_12_SP_merge, features = "matriz4") + 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-valor_maximo_absoluto_matriz4, valor_maximo_absoluto_matriz4)) + 
+  ggtitle(NULL)
+p1
+```
+
+```{r}
+so_12_SP_merge$matriz4_color <- ifelse(so_12_SP_merge$matriz4 > 0, "KO > WT", 
+                                       ifelse(so_12_SP_merge$matriz4 < 0, "WT > KO", NA))
+p2 <- DimPlot(so_12_SP_merge, group.by = "matriz4_color", cols = c("#FA8072", "#B9D3EE"))+ 
+  ggtitle(NULL)
+p2
+```
+
+```{r}
+ggsave("results_12_sp/merge/matriz4_upregulated_scale.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz4_upregulated_scale.pdf", plot = p1, width = 8, height = 6)
+
+ggsave("results_12_sp/merge/matriz4_upregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz4_upregulated.pdf", plot = p2, width = 8, height = 6)
+```
+
+```{r}
+ggsave("matriz4_upregulated_scale.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("matriz4_upregulated_scale.pdf", plot = p1, width = 8, height = 6)
+
+ggsave("matriz4_upregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("matriz4_upregulated.pdf", plot = p2, width = 8, height = 6)
+```
+
+
+# graficos subset 6 marcadores
+
+```{r}
+markers_etmr_rafa <- c("Lin28a","Sp8","Prtg", "Trim71", "Greb1", "Igf2bp1")
+```
+
+## celular
+```{r}
+matriz1 <- expm1(GetAssayData(so_12_SP_merge, layer = "data")[markers_etmr_rafa, ])
+matriz1 <- as.data.frame(matriz1)
+
+matriz1 <- colMeans(matriz1)
+matriz1 <- as.data.frame(matriz1)
+
+so_12_SP_merge$matriz1 <- matriz1$matriz1
+```
+
+## cluster
+```{r}
+matriz2 <- AverageExpression(
+  so_12_SP_merge,
+  features = markers_etmr_rafa,
+  group.by = c("seurat_clusters"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2 <- as.data.frame(matriz2$RNA)
+
+matriz2 <- colMeans(matriz2)
+
+matriz2 <- as.data.frame(matriz2)
+matriz2 <- matriz2 %>% rownames_to_column("seurat_clusters")
+
+so_12_SP_merge$matriz2 <- matriz2[so_12_SP_merge$seurat_clusters, "matriz2"]
+```
+
+## cluster y condicion
+
+```{r}
+so_12_SP_merge$cluster_condition <- as.factor(paste(so_12_SP_merge$seurat_clusters, so_12_SP_merge$condition, sep = "_"))
+
+matriz3 <- AverageExpression(
+  so_12_SP_merge,
+  features = markers_etmr_rafa,
+  group.by = "cluster_condition",
+  assays = "RNA", 
+  layer = "data"
+)
+matriz3 <- as.data.frame(matriz3$RNA)
+
+matriz3 <- colMeans(matriz3)
+
+matriz3 <- as.data.frame(matriz3)
+matriz3 <- matriz3 %>% rownames_to_column("cluster_condition")
+matriz3$cluster_condition <- gsub("-", "_", matriz3$cluster_condition)
+
+so_12_SP_merge$matriz3 <- matriz3[so_12_SP_merge$cluster_condition, "matriz3"]
+```
+
+## limites
+
+```{r}
+valor_maximo_absoluto_matriz1 <- as.numeric(quantile(abs(so_12_SP_merge$matriz1), 0.99))
+valor_maximo_absoluto_matriz1  
+valor_maximo_absoluto_matriz2 <- max(abs(so_12_SP_merge$matriz2)) 
+valor_maximo_absoluto_matriz2  
+valor_maximo_absoluto_matriz3 <- max(abs(so_12_SP_merge$matriz3), na.rm = TRUE)
+valor_maximo_absoluto_matriz3 
+```
+
+[1] 1.467509
+[1] 0.9173504
+[1] 0.9203648
+
+
+## graficas
+
+```{r, message=FALSE}
+truncar_valores <- function(x, min_val, max_val) {
+  pmin(pmax(x, min_val), max_val)
+}
+
+limite1 <- c(0, 1.4)
+so_12_SP_merge$matriz1_truncada <- truncar_valores(so_12_SP_merge$matriz1, limite1[1], limite1[2])
+FeaturePlot(so_12_SP_merge, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular ko")
+
+limite2 <- c(0, 1)
+so_12_SP_merge$matriz2_truncada <- truncar_valores(so_12_SP_merge$matriz2, limite2[1], limite2[2])
+FeaturePlot(so_12_SP_merge, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters ko")
+
+limite3 <- c(0, 1)
+so_12_SP_merge$matriz3_truncada <- truncar_valores(so_12_SP_merge$matriz3, limite3[1], limite3[2])
+FeaturePlot(so_12_SP_merge, features = "matriz3_truncada", split.by = "condition") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite3)
+```
+
+
+```{r}
+p1 <- FeaturePlot(so_12_SP_merge, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1.4)) & 
+  ggtitle("Expresión celular")
+ggsave("results_12_sp/merge/matriz1_genes_rafa.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz1_genes_rafa.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- FeaturePlot(so_12_SP_merge, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1)) & 
+  ggtitle("Expresión clusters")
+ggsave("results_12_sp/merge/matriz2_genes_rafa.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz2_genes_rafa.pdf", plot = p2, width = 8, height = 6)
+
+p3 <- FeaturePlot(so_12_SP_merge, features = "matriz3_truncada", split.by = "condition") & scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 1))
+ggsave("results_12_sp/merge/matriz3_genes_rafa.png", plot = p3, width = 14, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz3_genes_rafa.pdf", plot = p3, width = 14, height = 6)
+```
+
+
+## vlnplots
+
+```{r}
+p <- VlnPlot(
+  object = so_12_SP_merge,
+  features = "matriz1",
+  split.by = "condition",
+  pt.size = 0,
+  split.plot = TRUE
+) + 
+  scale_fill_manual(values = c("KO" = "#9BCD9B", "WT" = "#8968CD"))
+p
+
+ggsave("results_12_sp/merge/vlnplot_expresion_genes_rafa.png", plot = p, width = 10, height = 6)
+ggsave("results_12_sp/merge/pdfs/vlnplot_expresion_genes_rafa.pdf", plot = p, width = 6, height = 4)
+```
+
+
+## feature plots paper
+
+### celular
+```{r}
+markers_etmr_rafa <- c("Lin28a","Sp8","Prtg","Trim71","Greb1","Igf2bp1")
+so_12_SP_merge$condition <- factor(so_12_SP_merge$condition, levels = c("WT", "KO"))
+
+dir.create("results_12_sp/merge/marcadores_espeficidos/celular/pdf/", recursive = TRUE, showWarnings = FALSE)
+
+for (gene in markers_etmr_rafa) {
+  p <- FeaturePlot(so_12_SP_merge, features = gene, split.by = "condition") &
+  theme(legend.position = "right")
+   ggsave(
+    filename = paste0("results_12_sp/merge/marcadores_espeficidos/celular/", gene, "_FeaturePlot.png"),
+    plot = p,
+    width = 10,
+    height = 5,
+    dpi = 300
+  )
+}
+```
+
+
+
+### cluster
+
+
+```{r}
+so_12_SP_merge$cluster_condition <- as.factor(paste(so_12_SP_merge$seurat_clusters, so_12_SP_merge$condition, sep = "_"))
+
+matriz3 <- AverageExpression(
+  so_12_SP_merge,
+  features = markers_etmr_rafa,
+  group.by = "cluster_condition",
+  assays = "RNA", 
+  layer = "data"
+)
+
+matriz3 <- as.data.frame(t(matriz3$RNA))
+matriz3 <- matriz3 %>% rownames_to_column("cluster_condition")
+matriz3$cluster_condition <- gsub("-", "_", matriz3$cluster_condition)
+
+so_12_SP_merge$Lin28a_expresion <- matriz3[so_12_SP_merge$cluster_condition, "Lin28a"]
+
+so_12_SP_merge$Sp8_expresion <- matriz3[so_12_SP_merge$cluster_condition, "Sp8"]
+
+so_12_SP_merge$Prtg_expresion <- matriz3[so_12_SP_merge$cluster_condition, "Prtg"]
+
+so_12_SP_merge$Trim71_expresion <- matriz3[so_12_SP_merge$cluster_condition, "Trim71"]
+
+so_12_SP_merge$Greb1_expresion <- matriz3[so_12_SP_merge$cluster_condition, "Greb1"]
+
+so_12_SP_merge$Igf2bp1_expresion <- matriz3[so_12_SP_merge$cluster_condition, "Igf2bp1"]
+
+```
+
+```{r}
+for (gene in markers_etmr_rafa) {
+  feature_name <- paste0(gene, "_expresion")
+  p <- FeaturePlot(
+    so_12_SP_merge,
+    features = feature_name,
+    split.by = "condition"
+  ) &
+  theme(legend.position = "right")
+  
+  ggsave(
+    filename = paste0("results_12_sp/merge/marcadores_espeficidos/cluster/", gene, "_FeaturePlot_cluster.png"),
+    plot = p,
+    width = 10,
+    height = 5,
+    dpi = 300
+  )
+}
+```
+
+
+
+
+
+# graficos down signatura
+
+```{r}
+# downregulated
+signature_etmr <- read.xlsx("signature/ETMRsig_NegativeGenes_withoutfoldchange.xlsx", colNames = FALSE)
+ortologos_rafa <- read.table("signature/orthologs_final_human_mouse.tsv")
+etmr_ortologos <- intersect(signature_etmr$X1, ortologos_rafa$V1)
+signature_etmr_raton <- subset(ortologos_rafa, V1 %in% etmr_ortologos, select = "V2")
+signature_etmr_raton <- signature_etmr_raton$V2
+gene.set_down <- intersect(signature_etmr_raton, rownames(so_12_SP_merge))
+rm(ortologos_rafa, signature_etmr, etmr_ortologos,  signature_etmr_raton)
+```
+
+
+## celular
+
+```{r}
+matriz1 <- expm1(GetAssayData(so_12_SP_merge, layer = "data")[gene.set_down, ])
+matriz1 <- as.data.frame(matriz1)
+
+matriz1 <- colMeans(matriz1)
+matriz1 <- as.data.frame(matriz1)
+
+so_12_SP_merge$matriz1 <- matriz1$matriz1
+```
+
+
+## cluster
+
+```{r}
+matriz2 <- AverageExpression(
+  so_12_SP_merge,
+  features = gene.set_down,
+  group.by = c("seurat_clusters"),
+  assays = "RNA", 
+  layer = "data"
+)
+matriz2 <- as.data.frame(matriz2$RNA)
+
+matriz2 <- colMeans(matriz2)
+
+matriz2 <- as.data.frame(matriz2)
+matriz2 <- matriz2 %>% rownames_to_column("seurat_clusters")
+
+so_12_SP_merge$matriz2 <- matriz2[so_12_SP_merge$seurat_clusters, "matriz2"]
+```
+
+## cluster y condicion
+
+```{r}
+so_12_SP_merge$cluster_condition <- as.factor(paste(so_12_SP_merge$seurat_clusters, so_12_SP_merge$condition, sep = "_"))
+
+matriz3 <- AverageExpression(
+  so_12_SP_merge,
+  features = gene.set_down,
+  group.by = "cluster_condition",
+  assays = "RNA", 
+  layer = "data"
+)
+matriz3 <- as.data.frame(matriz3$RNA)
+
+matriz3 <- colMeans(matriz3)
+
+matriz3 <- as.data.frame(matriz3)
+matriz3 <- matriz3 %>% rownames_to_column("cluster_condition")
+matriz3$cluster_condition <- gsub("-", "_", matriz3$cluster_condition)
+
+so_12_SP_merge$matriz3 <- matriz3[so_12_SP_merge$cluster_condition, "matriz3"]
+```
+
+## limites
+
+```{r}
+valor_maximo_absoluto_matriz1 <- as.numeric(quantile(abs(so_12_SP_merge$matriz1), 0.99))
+valor_maximo_absoluto_matriz1  
+valor_maximo_absoluto_matriz2 <- max(abs(so_12_SP_merge$matriz2)) 
+valor_maximo_absoluto_matriz2  
+valor_maximo_absoluto_matriz3 <- max(abs(so_12_SP_merge$matriz3), na.rm = TRUE)
+valor_maximo_absoluto_matriz3 
+```
+
+[1] 0.540805
+[1] 0.3725867
+[1] 0.4450602
+
+## graficas
+
+```{r, message=FALSE}
+truncar_valores <- function(x, min_val, max_val) {
+  pmin(pmax(x, min_val), max_val)
+}
+
+limite1 <- c(0, 0.7)
+so_12_SP_merge$matriz1_truncada <- truncar_valores(so_12_SP_merge$matriz1, limite1[1], limite1[2])
+FeaturePlot(so_12_SP_merge, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite1) & 
+  ggtitle("Expresión celular")
+
+limite2 <- c(0, 0.7)
+so_12_SP_merge$matriz2_truncada <- truncar_valores(so_12_SP_merge$matriz2, limite2[1], limite2[2])
+FeaturePlot(so_12_SP_merge, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite2) & 
+  ggtitle("Expresión clusters")
+
+limite3 <- c(0, 0.7)
+so_12_SP_merge$matriz3_truncada <- truncar_valores(so_12_SP_merge$matriz3, limite3[1], limite3[2])
+FeaturePlot(so_12_SP_merge, features = "matriz3_truncada", split.by = "condition") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = limite3)
+```
+
+```{r}
+p1 <- FeaturePlot(so_12_SP_merge, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.7)) & 
+  ggtitle("Expresión celular")
+ggsave("results_12_sp/merge/matriz1_downregulated.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz1_downregulated.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- FeaturePlot(so_12_SP_merge, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.7)) & 
+  ggtitle("Expresión clusters")
+ggsave("results_12_sp/merge/matriz2_downregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz2_downregulated.pdf", plot = p2, width = 8, height = 6)
+
+p3 <- FeaturePlot(so_12_SP_merge, features = "matriz3_truncada", split.by = "condition") & scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.7))
+ggsave("results_12_sp/merge/matriz3_downregulated.png", plot = p3, width = 14, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz3_downregulated.pdf", plot = p3, width = 14, height = 6)
+```
+
+```{r}
+p1 <- FeaturePlot(so_12_SP_merge, features = "matriz1_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.5)) & 
+  ggtitle("Expresión celular")
+ggsave("matriz1_downregulated.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("matriz1_downregulated.pdf", plot = p1, width = 8, height = 6)
+
+p2 <- FeaturePlot(so_12_SP_merge, features = "matriz2_truncada") & 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.5)) & 
+  ggtitle("Expresión clusters")
+ggsave("matriz2_downregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("matriz2_downregulated.pdf", plot = p2, width = 8, height = 6)
+
+p3 <- FeaturePlot(so_12_SP_merge, features = "matriz3_truncada", split.by = "condition") & scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(0, 0.5)) & 
+  ggtitle("Expresión clusters por condición")
+ggsave("matriz3_downregulated.png", plot = p3, width = 14, height = 6, dpi = 300)
+ggsave("matriz3_downregulated.pdf", plot = p3, width = 14, height = 6)
+```
+
+
+## cluster ko - cluster wt: downregulada
+
+```{r}
+matriz4 <- matriz3 %>%
+  separate(cluster_condition, into = c("cluster", "condition"), sep = "_") %>%
+  mutate(seurat_clusters = as.integer(cluster))
+
+matriz4 <- matriz4 %>%
+  pivot_wider(names_from = condition, values_from = matriz3)
+
+matriz4 <- matriz4 %>%
+  mutate(matriz4 = KO - WT)
+
+matriz4 <- matriz4 %>%
+  select(seurat_clusters, matriz4)
+
+matriz4 <- as.data.frame(matriz4)
+
+matriz4$seurat_clusters <- as.character(matriz4$seurat_clusters)
+so_12_SP_merge$seurat_clusters <- as.character(so_12_SP_merge$seurat_clusters)
+
+rownames(matriz4) <- matriz4$seurat_clusters
+
+so_12_SP_merge$matriz4 <- matriz4[so_12_SP_merge$seurat_clusters, "matriz4"]
+```
+
+```{r}
+valor_maximo_absoluto_matriz4 <- max(abs(so_12_SP_merge$matriz4), na.rm = TRUE)
+p1 <- FeaturePlot(so_12_SP_merge, features = "matriz4") + 
+  scale_color_gradientn(colors = rev(brewer.pal(11, "RdBu")), limits = c(-valor_maximo_absoluto_matriz4, valor_maximo_absoluto_matriz4)) + 
+  ggtitle(NULL)
+p1
+```
+
+```{r}
+so_12_SP_merge$matriz4_color <- ifelse(so_12_SP_merge$matriz4 > 0, "KO > WT", 
+                                       ifelse(so_12_SP_merge$matriz4 < 0, "WT > KO", NA))
+p2 <- DimPlot(so_12_SP_merge, group.by = "matriz4_color", cols = c("#FA8072", "#B9D3EE"))+ 
+  ggtitle(NULL)
+p2
+```
+
+```{r}
+ggsave("results_12_sp/merge/matriz4_downregulated_scale.png", plot = p1, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz4_downregulated_scale.pdf", plot = p1, width = 8, height = 6)
+
+ggsave("results_12_sp/merge/matriz4_downregulated.png", plot = p2, width = 8, height = 6, dpi = 300)
+ggsave("results_12_sp/merge/pdfs/matriz4_downregulated.pdf", plot = p2, width = 8, height = 6)
+```
+
+
+
+# graficos proporciones
+
+```{r}
+df <- so_12_SP_merge@meta.data %>%
+  mutate(cell_types_2 = factor(cell_types_2, levels = c("RDG", "GLUT_IPC", "GABA_IPC", "GLUT_neuron", "GABA_neuron", "CR")))
+
+df_prop <- df %>%
+  group_by(condition, cell_types_2) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(condition) %>%
+  mutate(proportion = n / sum(n))
+
+p1 <- ggplot(df_prop, aes(x = cell_types_2, y = proportion, fill = condition)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("KO" = "#9BCD9B", "WT" = "#8968CD")) +
+  labs(title = "Fraction of cells per type within each condition") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p1
+
+ggsave("results_12_sp/merge/proportion_cell_condition.png", plot = p1, width = 10, height = 6)
+ggsave("results_12_sp/merge/pdfs/proportion_cell_condition.pdf", plot = p1, width = 6, height = 4)
+
+```
+
+```{r}
+addmargins(table(df$condition, df$cell_types_2))
+
+addmargins(table(df$condition, df$Phase))
+```
+
+
+```{r}
+tabla_raw <- table(df$condition, df$cell_types_2)
+tabla <- addmargins(tabla_raw)
+tabla_df <- as.data.frame.matrix(tabla)
+tabla_df <- rownames_to_column(tabla_df, var = "Condition")
+tabla_df[] <- lapply(tabla_df, as.character)
+tabla_gt <- tabla_df %>%
+  gt() %>%
+  tab_header(
+    title = "Cell Type Counts per Condition",
+  ) %>%
+  tab_options(
+    table.font.size = "small",
+    column_labels.font.weight = "bold"
+  )
+```
+
+```{r}
+gtsave(tabla_gt, "results_12_sp/merge/cell_type_counts.png")
+gtsave(tabla_gt, "results_12_sp/merge/pdfs/cell_type_counts.pdf")
+```
+
+```{r}
+so_12_SP_merge$matriz1 <- NULL
+so_12_SP_merge$matriz2 <- NULL
+so_12_SP_merge$matriz3 <- NULL
+so_12_SP_merge$matriz1_truncada <- NULL
+so_12_SP_merge$m
+atriz2_truncada <- NULL
+so_12_SP_merge$matriz3_truncada <- NULL
+```
+
+
+
+# graficos log2FC
+
+## con significancia estadística: no valores descriptivos, sino inferencia
+
+
+```{#r}
+meta <- so_12_SP_merge@meta.data
+
+addmargins(table(meta$seurat_clusters, meta$sample_origin))
+addmargins(table(meta$seurat_clusters, meta$condition))
+
+addmargins(prop.table(table(meta$seurat_clusters, meta$sample_origin)))
+addmargins(prop.table(table(meta$seurat_clusters, meta$condition)))
+
+addmargins(prop.table(table(meta$seurat_clusters, meta$sample_origin), margin = 2))
+addmargins(prop.table(table(meta$seurat_clusters, meta$condition), margin = 2))
+```
+
+
+El problema de esta forma es que tenemos pocas muestras dentro de una misma condicion y pocos clusters van a salir con diferencias significativas.
+
+
+```{r}
+# calculo los estadísticos y hago el test
+prop <- propeller(clusters = so_12_SP_merge$seurat_clusters, 
+                  sample = so_12_SP_merge$sample_origin, 
+                  group = so_12_SP_merge$condition)
+prop$Log2FoldChange <- log2(prop$PropRatio)
+# es lo mismo que hacer prop$Log2FoldChange <- log2(prop$PropMean.KO / prop$PropMean.WT)
+
+
+
+# añado la variable para el color
+breaks <- c(-Inf, 0.05, Inf)
+labels <- c("Significant", "Not significant")
+prop$FDR_category <- cut(prop$FDR, breaks = breaks, labels = labels, include.lowest = TRUE)
+
+
+
+# le añado la variable de cell_types_2 a los clusters, teniendo en cuenta el valor más frecuente en ese cluster
+cluster_to_category <- data.frame(
+  cluster = so_12_SP_merge$seurat_clusters,
+  cell_types_2 = so_12_SP_merge$cell_types_2
+)
+# table(cluster_to_category$cluster, cluster_to_category$cell_types_2)
+cluster_majority <- cluster_to_category %>%
+  group_by(cluster, cell_types_2) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  group_by(cluster) %>%
+  slice_max(n, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(cluster, cell_types_2)
+prop <- prop %>%
+  left_join(cluster_majority, by = c("BaselineProp.clusters" = "cluster"))
+
+rm(cluster_majority, cluster_to_category, breaks, labels)
+```
+
+
+Por si quiero con jitter al final (no usado)
+```{#r}
+set.seed(1)
+pos <- position_jitter(width = 0.12, height = 0)
+
+# 1) Fijar el orden de las categorías EN LOS DATOS antes del jitter
+desired_levels <- c("RDG", "GLUT_IPC", "GABA_IPC", "GLUT_neuron", "GABA_neuron", "CR")
+prop$cell_types_2 <- factor(prop$cell_types_2, levels = desired_levels)
+
+# 2) Generar las posiciones con jitter (ya respetan el orden deseado)
+points_df <- ggplot_build(
+  ggplot(prop, aes(x = cell_types_2, y = Log2FoldChange)) +
+    geom_point(position = pos)
+)$data[[1]]
+
+# 3) Añadir columnas originales para usar en el plot
+points_df$label              <- prop$BaselineProp.clusters
+points_df$FDR_category       <- prop$FDR_category
+points_df$BaselineProp.Freq  <- prop$BaselineProp.Freq
+
+# 4) Plot: eje X construido a partir de los niveles reales
+x_levels <- levels(prop$cell_types_2)
+
+foldchange_plot <- ggplot(points_df, aes(x = x, y = y)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_point(aes(color = FDR_category, size = BaselineProp.Freq),
+             alpha = 0.9, stroke = 0.3) +
+  geom_text(
+    aes(label = label, color = FDR_category),
+    hjust = 0, vjust = 0.5, nudge_x = 0.1, size = 3.6,
+    check_overlap = TRUE
+  ) +
+  scale_x_continuous(
+    breaks = seq_along(x_levels),
+    labels = x_levels,
+    expand = expansion(mult = c(0.05, 0.15))
+  ) +
+  scale_size_continuous(
+    name = "BaselineProp.Freq", range = c(2.8, 8),
+    guide = guide_legend(override.aes = list(alpha = 1))
+  ) +
+  scale_color_manual(
+    name = "FDR",
+    values = c("Not significant" = "black",
+               "Significant"     = "red",
+               "Very significant"= "blue")
+  ) +
+  labs(x = "Cell Types 2", y = "Log2FoldChange") +
+  coord_cartesian(clip = "off") +
+  theme_classic(base_size = 13)
+
+# Flecha y ensamblado (igual que tenías)
+arrow_grob <- ggplot() +
+  xlim(0, 1) + ylim(0, 1) + theme_void() +
+  annotate("segment", x = 0.5, xend = 0.5, y = 0.12, yend = 0.92,
+           arrow = arrow(ends = "both", length = unit(0.14, "inches")),
+           color = "black", linewidth = 0.6) +
+  annotate("text", x = 0.5, y = 0.97, label = "KO", size = 4, fontface = "bold") +
+  annotate("text", x = 0.5, y = 0.07, label = "WT", size = 4, fontface = "bold")
+
+p1 <- grid.arrange(arrow_grob, foldchange_plot, ncol = 2, widths = c(1.2, 9.5))
+p1
+
+ggsave("log2foldchange_prop_12_sp.png", plot = p1, width = 14, height = 10, dpi = 300)
+```
+
+
+
+Sin jitter, uno debajo de otro:
+```{r}
+# ordeno cómo van a salir las variables: 
+desired_levels <- c("RDG", "GLUT_IPC", "GABA_IPC", "GLUT_neuron", "GABA_neuron", "CR")
+prop$cell_types_2 <- factor(prop$cell_types_2, levels = desired_levels)
+
+# filtro si hay algún valor infinito en y, aka un cluster que esté solo formado por KO o WT
+prop_plot <- prop %>% 
+  dplyr::filter(is.finite(Log2FoldChange))
+
+# gráfico
+foldchange_plot <- ggplot(prop_plot, aes(x = cell_types_2, y = Log2FoldChange)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_point(aes(color = FDR_category, size = BaselineProp.Freq),
+             alpha = 0.9, stroke = 0.3) +
+  geom_text(
+    aes(label = BaselineProp.clusters, color = FDR_category),
+    hjust = 0, vjust = 0.5, nudge_x = 0.1, size = 3.6,
+    check_overlap = FALSE
+  ) +
+  scale_size_continuous(
+    name = "BaselineProp.Freq", range = c(2.8, 8),
+    guide = guide_legend(override.aes = list(alpha = 1))
+  ) +
+  scale_color_manual(
+    name = "FDR",
+    values = c("Not significant" = "black",
+               "Significant"     = "red")
+  ) +
+  labs(x = "Cell types", y = "Log2FoldChange") +
+  coord_cartesian(clip = "off") +
+  theme_classic(base_size = 13)
+
+# flecha
+arrow_grob <- ggplot() +
+  xlim(0, 1) + ylim(0, 1) + theme_void() +
+  annotate("segment", x = 0.5, xend = 0.5, y = 0.12, yend = 0.92,
+           arrow = arrow(ends = "both", length = unit(0.14, "inches")),
+           color = "black", linewidth = 0.6) +
+  annotate("text", x = 0.5, y = 0.97, label = "KO", size = 4, fontface = "bold") +
+  annotate("text", x = 0.5, y = 0.07, label = "WT", size = 4, fontface = "bold")
+
+# unión
+p1 <- grid.arrange(arrow_grob, foldchange_plot, ncol = 2, widths = c(1.2, 9.5))
+p1
+
+# guardo
+ggsave("log2foldchange_prop_12_sp_nojitter.png", plot = p1, width = 14, height = 10, dpi = 300)
+ggsave("log2foldchange_prop_12_sp_nojitter.pdf", plot = p1, width = 14, height = 10)
+
+rm(arrow_grob, foldchange_plot, p1, prop_plot, desired_levels)
+```
+
+### umap
+
+```{r}
+prop_sub <- subset(prop, Log2FoldChange < -2 | Log2FoldChange > 2, 
+                           select = c("BaselineProp.clusters", "Log2FoldChange"))
+prop_sub <- prop_sub %>%
+  mutate(condition_proportions = ifelse(Log2FoldChange > 0, "KO", "WT"))
+clusters_seurat <- so_12_SP_merge@meta.data$seurat_clusters
+so_12_SP_merge$condition_proportions <- prop_sub$condition_proportions[match(clusters_seurat, prop_sub$BaselineProp.clusters)]
+
+
+p1 <- DimPlot(so_12_SP_merge, 
+              reduction = "umap.unintegrated", 
+              group.by = "condition_proportions") +
+  scale_color_manual(values = c("plum", "lightgreen")) +
+  labs(title = NULL) 
+p1
+
+ggsave("umap_log2FC_12_sp.pdf", plot = p1, width = 8, height = 6)
+ggsave("umap_log2FC_12_sp.png", plot = p1, width = 8, height = 6, dpi = 300)
+
+rm(p1, prop_sub, clusters_seurat)
+```
+
+
+
+
+
+## simplemente descriptiva: valores sin inferencia
+
+Voy a calcular los valores de la proporcion de celulas en cada cluster por condición. Esto lo hago con propeller usando el sample = colnames(so_12_CX_merge) - que es lo mismo que coger los valores de 
+addmargins(prop.table(table(meta$seurat_clusters, meta$condition), margin = 2))
+
+PERO CUIDADO: Cojo los valores usando propeller porque son los mismos valores y es una forma rápida de obtenerlos pero NO estoy usando la inferencia estadística de PROPELLER. Es decir, EN ESTE CASO NO PUEDO USAR LUEGO EL P-VALOR O EL FDR (que era lo que hacía Rafa). La significancia no tiene sentido porque se está haciendo el test teniendo en cuenta que las células son independientes entre sí, que no lo son, y por tanto usamos un error estandar MUY artificialemente pequeño y nos va a generar p-valores extremadamente pequeños (por eso Rafa tenía que dividirlos en colores). NO ESTOY USANDO EL MÉTODO DE PROPELLER, SOLO USO LA FUNCIÓN (IGUAL QUE PODRÍA PONER OTRO CÓDIGO PARA GENERAR LOS LOG2FC MANUALMENTE).
+
+```{r}
+# calculo los valores:
+prop2 <- propeller(clusters = so_12_SP_merge$seurat_clusters, 
+                  sample = colnames(so_12_SP_merge), 
+                  group = so_12_SP_merge$condition)
+prop2$Log2FoldChange <- log2(prop2$PropRatio)
+# es lo mismo que hacer prop2$Log2FoldChange <- log2(prop2$PropMean.KO / prop2$PropMean.WT)
+
+# le añado la variable de cell_types_2 a los clusters, teniendo en cuenta el valor más frecuente en ese cluster
+cluster_to_category <- data.frame(
+  cluster = so_12_SP_merge$seurat_clusters,
+  cell_types_2 = so_12_SP_merge$cell_types_2
+)
+
+# table(cluster_to_category$cluster, cluster_to_category$cell_types_2)
+cluster_majority <- cluster_to_category %>%
+  group_by(cluster, cell_types_2) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  group_by(cluster) %>%
+  slice_max(n, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(cluster, cell_types_2)
+prop2 <- prop2 %>%
+  left_join(cluster_majority, by = c("BaselineProp.clusters" = "cluster"))
+
+rm(cluster_majority, cluster_to_category, breaks, labels)
+```
+
+Sin jitter, uno debajo de otro:
+```{r}
+# ordeno cómo van a salir las variables: 
+desired_levels <- c("RDG", "GLUT_IPC", "GABA_IPC", "GLUT_neuron", "GABA_neuron", "CR")
+prop2$cell_types_2 <- factor(prop2$cell_types_2, levels = desired_levels)
+
+# filtro si hay algún valor infinito en y, aka un cluster que esté solo formado por KO o WT
+prop2_plot <- prop2 %>% 
+  dplyr::filter(is.finite(Log2FoldChange))
+
+# gráfico
+foldchange_plot <- ggplot(prop2_plot, aes(x = cell_types_2, y = Log2FoldChange)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_point(aes(size = BaselineProp.Freq),
+             alpha = 0.9, stroke = 0.3) +
+  geom_text(
+    aes(label = BaselineProp.clusters),
+    hjust = 0, vjust = 0.5, nudge_x = 0.1, size = 3.6,
+    check_overlap = FALSE
+  ) +
+  scale_size_continuous(
+    name = "BaselineProp.Freq", range = c(2.8, 8),
+    guide = guide_legend(override.aes = list(alpha = 1))
+  )  +
+  labs(x = "Cell types", y = "Log2FoldChange") +
+  coord_cartesian(clip = "off") +
+  theme_classic(base_size = 13)
+
+# flecha
+arrow_grob <- ggplot() +
+  xlim(0, 1) + ylim(0, 1) + theme_void() +
+  annotate("segment", x = 0.5, xend = 0.5, y = 0.12, yend = 0.92,
+           arrow = arrow(ends = "both", length = unit(0.14, "inches")),
+           color = "black", linewidth = 0.6) +
+  annotate("text", x = 0.5, y = 0.97, label = "KO", size = 4, fontface = "bold") +
+  annotate("text", x = 0.5, y = 0.07, label = "WT", size = 4, fontface = "bold")
+
+# unión
+p1 <- grid.arrange(arrow_grob, foldchange_plot, ncol = 2, widths = c(1.2, 9.5))
+p1
+
+# guardo
+ggsave("log2foldchange_prop2_12_sp_nojitter_descriptivo.png", plot = p1, width = 14, height = 10, dpi = 300)
+ggsave("log2foldchange_prop2_12_sp_nojitter_descriptivo.pdf", plot = p1, width = 14, height = 10)
+
+rm(arrow_grob, foldchange_plot, p1, prop2_plot, desired_levels)
+```
+
+
+
+#### gráficas final del paper (con solo numeros en log>3 o <-3)
+
+```{r}
+# calculo los valores: OJO, USO PROPELLER PORQUE es más rápido el cálculo, pero no estoy usando la parte de inferencia estadística
+prop2 <- propeller(clusters = so_12_SP_merge$seurat_clusters, 
+                  sample = colnames(so_12_SP_merge), 
+                  group = so_12_SP_merge$condition)
+prop2$Log2FoldChange <- log2(prop2$PropRatio)
+# es lo mismo que hacer prop2$Log2FoldChange <- log2(prop2$PropMean.KO / prop2$PropMean.WT)
+
+# le añado la variable de cell_types_2 a los clusters, teniendo en cuenta el valor más frecuente en ese cluster
+cluster_to_category <- data.frame(
+  cluster = so_12_SP_merge$seurat_clusters,
+  cell_types_2 = so_12_SP_merge$cell_types_2
+)
+
+# table(cluster_to_category$cluster, cluster_to_category$cell_types_2)
+cluster_majority <- cluster_to_category %>%
+  group_by(cluster, cell_types_2) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  group_by(cluster) %>%
+  slice_max(n, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(cluster, cell_types_2)
+prop2 <- prop2 %>%
+  left_join(cluster_majority, by = c("BaselineProp.clusters" = "cluster"))
+
+rm(cluster_majority, cluster_to_category)
+```
+
+Sin jitter, uno debajo de otro:
+```{r}
+# ordeno cómo van a salir las variables: 
+desired_levels <- c("RDG", "GLUT_IPC", "GABA_IPC", "GLUT_neuron", "GABA_neuron", "CR")
+prop2$cell_types_2 <- factor(prop2$cell_types_2, levels = desired_levels)
+
+# filtro si hay algún valor infinito en y, aka un cluster que esté solo formado por KO o WT
+prop2_plot <- prop2 %>% 
+  dplyr::filter(is.finite(Log2FoldChange))
+
+# gráfico
+foldchange_plot <- ggplot(prop2_plot, aes(x = cell_types_2, y = Log2FoldChange)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_point(aes(size = BaselineProp.Freq),
+             alpha = 0.9, stroke = 0.3) +
+  geom_text(
+    data = subset(prop2_plot, abs(Log2FoldChange) > 3),  # 👈 solo etiquetas con |log2FC| > 3
+    aes(label = BaselineProp.clusters),
+    hjust = 0, vjust = 0.5, nudge_x = 0.1, size = 3.6,
+    check_overlap = FALSE
+  ) +
+  scale_size_continuous(
+    name = "BaselineProp.Freq", range = c(2.8, 8),
+    guide = guide_legend(override.aes = list(alpha = 1))
+  )  +
+  labs(x = "Cell types", y = "Log2FoldChange") +
+  coord_cartesian(clip = "off") +
+  theme_classic(base_size = 13)
+
+
+# flecha
+arrow_grob <- ggplot() +
+  xlim(0, 1) + ylim(0, 1) + theme_void() +
+  annotate("segment", x = 0.5, xend = 0.5, y = 0.12, yend = 0.92,
+           arrow = arrow(ends = "both", length = unit(0.14, "inches")),
+           color = "black", linewidth = 0.6) +
+  annotate("text", x = 0.5, y = 0.97, label = "KO", size = 4, fontface = "bold") +
+  annotate("text", x = 0.5, y = 0.07, label = "WT", size = 4, fontface = "bold")
+
+# unión
+p1 <- grid.arrange(arrow_grob, foldchange_plot, ncol = 2, widths = c(1.2, 9.5))
+p1
+```
+
+
+```{r}
+# guardo
+ggsave("log2foldchange_prop2_12_sp_nojitter_descriptivo_paper2.png", plot = p1, width = 14, height = 10, dpi = 300)
+ggsave("log2foldchange_prop2_12_sp_nojitter_descriptivo_paper2.pdf", plot = p1, width = 14, height = 10)
+
+rm(arrow_grob, foldchange_plot, p1, prop2_plot, desired_levels)
+```
+
+
+
+### umap
+
+```{r}
+prop_sub <- subset(prop2, Log2FoldChange < -3 | Log2FoldChange > 3, 
+                           select = c("BaselineProp.clusters", "Log2FoldChange"))
+prop_sub <- prop_sub %>%
+  mutate(condition_proportions = ifelse(Log2FoldChange > 0, "KO", "WT"))
+clusters_seurat <- so_12_SP_merge@meta.data$seurat_clusters
+so_12_SP_merge$condition_proportions <- prop_sub$condition_proportions[match(clusters_seurat, prop_sub$BaselineProp.clusters)]
+
+
+p1 <- DimPlot(so_12_SP_merge, 
+              reduction = "umap.unintegrated", 
+              group.by = "condition_proportions") +
+  scale_color_manual(values = c("plum", "lightgreen")) +
+  labs(title = NULL) 
+p1
+
+ggsave("umap_log2FC_12_sp.pdf", plot = p1, width = 8, height = 6)
+ggsave("umap_log2FC_12_sp.png", plot = p1, width = 8, height = 6, dpi = 300)
+
+rm(p1, prop_sub, clusters_seurat)
+```
+
+
+# monocle3
+
+```{r}
+so_12_SP_merge$cluster_cell_type <- as.character(so_12_SP_merge$cluster_cell_type)
+so_12_SP_merge$cluster_cell_type[
+  so_12_SP_merge$cluster_cell_type %in% c("9.RDG")
+] <- "9.NEC"
+```
+
+```{r}
+so_12_SP_merge$cluster_cell_type_c9_cond <- so_12_SP_merge$cluster_cell_type
+
+so_12_SP_merge$cluster_cell_type_c9_cond <- ifelse(
+  so_12_SP_merge$cluster_cell_type_c9_cond == "9.NEC",
+  paste0(as.character(so_12_SP_merge$cluster_cell_type_c9_cond), "_", so_12_SP_merge$condition),
+  as.character(so_12_SP_merge$cluster_cell_type_c9_cond)
+)
+
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cluster_cell_type_c9_cond", label = T)
+```
+
+```{r}
+so_12_SP_merge$cluster_cell_types_2_c9_cond <- so_12_SP_merge$cluster_cell_type
+
+so_12_SP_merge$cluster_cell_types_2_c9_cond <- ifelse(
+  so_12_SP_merge$cluster_cell_types_2_c9_cond == "9.NEC",
+  paste0(as.character(so_12_SP_merge$cluster_cell_types_2_c9_cond), "_", so_12_SP_merge$condition),
+  as.character(so_12_SP_merge$cell_types_2)
+)
+
+DimPlot(so_12_SP_merge, reduction = "umap.unintegrated", group.by = "cluster_cell_types_2_c9_cond", label = T)
+```
+
+```{r}
+so_12_SP_merge_3d <- RunUMAP(
+  so_12_SP_merge, 
+  dims = 1:30, 
+  reduction = "pca", 
+  reduction.name = "umap.3d", 
+  n.components = 3
+)
+
+cds_12_SP_merge_3d <- as.cell_data_set(so_12_SP_merge_3d)
+
+recreate.partition <- c(rep(1, ncol(cds_12_SP_merge_3d)))
+names(recreate.partition) <- colnames(cds_12_SP_merge_3d)
+recreate.partition <- as.factor(recreate.partition)
+cds_12_SP_merge_3d@clusters$UMAP$partitions <- recreate.partition
+
+cds_12_SP_merge_3d@clusters$UMAP$clusters <- so_12_SP_merge$cluster_cell_type
+
+cds_12_SP_merge_3d@int_colData@listData$reducedDims$UMAP <- so_12_SP_merge_3d@reductions$umap.3d@cell.embeddings
+
+plot_cells_3d(cds_12_SP_merge_3d)
+
+p3d <- plot_cells_3d(cds_12_SP_merge_3d, color_cells_by = "cluster_cell_type")
+htmlwidgets::saveWidget(p3d, "cluster_cell_type.html")
+```
+
+# trayectorias 3d
+
+```{r}
+cds_12_SP_merge_3d <- learn_graph(cds_12_SP_merge_3d)
+
+ordenar_desde_clusters <- function(cds, cluster_names, colname = "seurat_clusters", seed = 123) {
+  set.seed(seed)
+  all_clusters <- unique(cds@colData[[colname]])
+  missing_clusters <- setdiff(cluster_names, all_clusters)
+  if (length(missing_clusters) > 0) {
+    stop(paste("Clúster(es) no encontrados:", paste(missing_clusters, collapse = ", ")))
+  }
+  root_cells <- unlist(lapply(cluster_names, function(cluster) {
+    cells_in_cluster <- colnames(cds)[cds@colData[[colname]] == cluster]
+    sample(cells_in_cluster, 1)
+  }))
+  cat("Células raíz seleccionadas:\n", paste(root_cells, collapse = ", "), "\n")
+  cds <- order_cells(cds, root_cells = root_cells)
+  return(cds)
+}
+clusters_raiz <- c("15", "23")
+cds_12_SP_merge_3d <- ordenar_desde_clusters(cds_12_SP_merge_3d, clusters_raiz)
+
+p3d <- plot_cells_3d(cds_12_SP_merge_3d, color_cells_by = "pseudotime")
+htmlwidgets::saveWidget(p3d, "trayectorias_monocle3_c15_23.html")
+
+p3d <- plot_cells_3d(cds_12_SP_merge_3d, color_cells_by = "Phase")
+htmlwidgets::saveWidget(p3d, "Phase.html")
+
+cds_12_SP_merge_3d@colData$cluster_cell_type <- as.character(cds_12_SP_merge_3d@colData$cluster_cell_type)
+
+p3d <- plot_cells_3d(cds_12_SP_merge_3d, color_cells_by = "cluster_cell_type")
+htmlwidgets::saveWidget(p3d, "cluster_cell_type.html")
+
+p3d <- plot_cells_3d(cds_12_SP_merge_3d, color_cells_by = "cell_types_2")
+htmlwidgets::saveWidget(p3d, "cell_types_2.html")
+
+saveRDS(cds_12_SP_merge_3d, file = "cds_12_SP_merge_3d.rds")
+cds_12_SP_merge_3d <- readRDS('cds_12_SP_merge_3d.rds')
+```
+
+
+```{r}
+grupos <- sort(unique(as.character(cds_12_SP_merge_3d@colData$cluster_cell_type_c9_cond)))
+
+paleta_defecto <- scales::hue_pal()(length(grupos))
+names(paleta_defecto) <- grupos
+paleta_defecto["9.NEC_KO"] <- "black"
+paleta_defecto["9.NEC_WT"] <- "black"
+colores_finales <- unname(paleta_defecto[grupos])
+
+p3d <- plot_cells_3d(
+  cds_12_SP_merge_3d,
+  color_cells_by = "cluster_cell_type_c9_cond",
+  color_palette = colores_finales,
+  cell_size = 25,
+              alpha = 1)
+
+
+p3d
+htmlwidgets::saveWidget(p3d, "cluster_cell_type_c9_cond2.html")
+```
+
+
+En monocle los puntos se van a pintar en funcion del orden alfabetico por ser la variable character (que tiene que ser). Entonces el que tenga la ultima primera letra, es el ultimo que se pinta. Y ese en el objeto en 3d será el que se vea "por encima". Aunque un grupo esté en la perspectiva por delante, ese color se verá por encima. Aunque ordenes los colores o los nombres, se sigue pintando por orden alfabetico. Para verlo, no tiene especial importancia pero para tomar la foto para el paper sí. Lo voy a solventar añadiéndole un 0 delante al resto de clusters:
+
+```{r}
+vals <- as.character(colData(cds_12_SP_merge_3d)$cluster_cell_types_2_c9_cond)
+vals_mod <- ifelse(vals %in% c("9.NEC_WT", "9.NEC_KO"), vals, paste0("0", vals))
+colData(cds_12_SP_merge_3d)$cluster_cell_types_2_c9_cond <- as.character(vals_mod)
+```
+
+```{r warning=false}
+colores <- c(
+  "0GABA_IPC"    = "#FFAEB9",
+  "0GABA_neuron" = "#8B5F65",
+  "0GLUT_IPC"    = "#FFD27F",
+  "0GLUT_neuron" = "#377EB8",
+  "0RDG"         = "#B2DFEE",
+  "0CR"          = "#C1FFC1",
+  "9.NEC_WT"     = "grey",
+  "9.NEC_KO"     = "#000000"
+)
+
+p3d <- plot_cells_3d(
+  cds_12_SP_merge_3d,
+  color_cells_by = "cluster_cell_types_2_c9_cond",
+  color_palette = colores,
+  cell_size = 25,
+  alpha = 1
+)
+
+p3d
+htmlwidgets::saveWidget(p3d, "cluster_cell_types_2_c9_cond2.html")
+```
+
+Ahora los clusters de 9.NEC son los últimos que se pintan y no se pierden para la foto.
+
+
+
+
+
+
+
+# guardado objeto
+
+```{r}
+saveRDS(so_12_SP_merge, file = "so_12_SP_merge_analyzed.rds")
+so_12_SP_merge <- readRDS("so_12_SP_merge_analyzed.rds")
+```
+
+
+# . 
+# creación objeto para integrar
+
+```{r}
+so_12_SP_KO <- readRDS("so_12_SP_KO_forMerging.rds")
+so_12_SP_WT <- readRDS("so_12_SP_WT_forMerging.rds")
+```
+
+
+```{r}
+# KO
+so_12_SP_KO$species <- "mouse"
+
+# cluster del merge
+names_in_merge <- gsub("^so_12_SP_KO_", "", Cells(so_12_SP_merge))
+cell_types_vector <- so_12_SP_merge$seurat_clusters[match(Cells(so_12_SP_KO), names_in_merge)]
+names(cell_types_vector) <- Cells(so_12_SP_KO)
+so_12_SP_KO <- AddMetaData(so_12_SP_KO, metadata = cell_types_vector, col.name = "seurat_clusters_merge_raton")
+
+so_12_SP_KO$cell_types_2 <- so_12_SP_KO$cell_types_2_KO
+so_12_SP_KO@meta.data$cell_types_2_species <- paste(
+  as.character(so_12_SP_KO@meta.data$cell_types_2),
+  as.character(so_12_SP_KO@meta.data$species),
+  sep = "_"
+)
+
+
+so_12_SP_KO@meta.data$cell_types_condition <- paste(
+  as.character(so_12_SP_KO@meta.data$cell_types_KO),
+  as.character(so_12_SP_KO@meta.data$condition),
+  sep = "_"
+)
+
+so_12_SP_KO@meta.data$cell_types_species <- paste(
+  as.character(so_12_SP_KO@meta.data$cell_types_condition),
+  as.character(so_12_SP_KO@meta.data$species),
+  sep = "_"
+)
+so_12_SP_KO@meta.data$cell_types_condition <- NULL
+
+
+
+
+# WT
+so_12_SP_WT$species <- "mouse"
+
+# cluster del merge
+names_in_merge <- gsub("^so_12_SP_WT_", "", Cells(so_12_SP_merge))
+cell_types_vector <- so_12_SP_merge$seurat_clusters[match(Cells(so_12_SP_WT), names_in_merge)]
+names(cell_types_vector) <- Cells(so_12_SP_WT)
+so_12_SP_WT <- AddMetaData(so_12_SP_WT, metadata = cell_types_vector, col.name = "seurat_clusters_merge_raton")
+
+so_12_SP_WT$cell_types_2 <- so_12_SP_WT$cell_types_2_WT
+so_12_SP_WT@meta.data$cell_types_2_species <- paste(
+  as.character(so_12_SP_WT@meta.data$cell_types_2),
+  as.character(so_12_SP_WT@meta.data$species),
+  sep = "_"
+)
+
+
+so_12_SP_WT@meta.data$cell_types_condition <- paste(
+  as.character(so_12_SP_WT@meta.data$cell_types_WT),
+  as.character(so_12_SP_WT@meta.data$condition),
+  sep = "_"
+)
+
+so_12_SP_WT@meta.data$cell_types_species <- paste(
+  as.character(so_12_SP_WT@meta.data$cell_types_condition),
+  as.character(so_12_SP_WT@meta.data$species),
+  sep = "_"
+)
+so_12_SP_WT@meta.data$cell_types_condition <- NULL
+
+```
+
+
+
+```{r}
+# objetos postfiltrados sin analizar pero con notación para integracion
+saveRDS(so_12_SP_KO, file = "so_12_SP_KO_int.rds")
+saveRDS(so_12_SP_WT, file = "so_12_SP_WT_int.rds")
+```
+
+```{r}
+so_12_SP_KO <- readRDS("so_12_SP_KO_int.rds")
+so_12_SP_WT <- readRDS("so_12_SP_WT_int.rds")
+```
+
+
+
+## creacion de objeto para integrar solo con células KO cluster 9
+
+```{r}
+so_12_SP_merge <- readRDS("so_12_SP_merge_notAnalyzed.rds")
+so_12_SP_merge_analizado <- readRDS("so_12_SP_merge_analyzed.rds")
+```
+
+```{r}
+cells_c9KO <- WhichCells(
+  so_12_SP_merge_analizado,
+  expression = cluster_cell_type_condition == "9.RDG_KO")
+```
+
+```{r}
+so_12_SP_merge_analizado
+so_12_SP_merge
+
+so_12_SP_merge_C9KO <- so_12_SP_merge[, colnames(so_12_SP_merge) %in% cells_c9KO]
+so_12_SP_merge_C9KO
+```
+
+```{r}
+so_12_SP_merge_C9KO$cell_types_KO <- NULL
+so_12_SP_merge_C9KO$cell_types_2_KO <- NULL
+so_12_SP_merge_C9KO$cell_types_2 <- NULL
+so_12_SP_merge_C9KO$cell_types_WT <- NULL
+so_12_SP_merge_C9KO$cell_types_2_WT <- NULL
+```
+
+Quitamos los genes que no usemos:
+```{r}
+genes_expresados <- rowSums(so_12_SP_merge_C9KO@assays$RNA@layers$counts) > 0
+so_12_SP_merge_C9KO <- subset(so_12_SP_merge_C9KO, features = rownames(so_12_SP_merge_C9KO)[genes_expresados])
+so_12_SP_merge_C9KO
+```
+
+### paso de genes de raton a ortólogos humanos:
+
+```{r}
+genes_ortologos <- read.table("signature/orthologs_final_human_mouse.tsv")
+genes_ortologos <- genes_ortologos[,1:2]
+colnames(genes_ortologos) <- c("humano", "raton")
+
+mouse_counts <- GetAssayData(so_12_SP_merge_C9KO, layer = "counts")
+
+common_genes <- intersect(rownames(mouse_counts), genes_ortologos$raton)
+mouse_counts <- mouse_counts[common_genes, ]
+
+matched_idx <- match(rownames(mouse_counts), genes_ortologos$raton)
+converted_names <- genes_ortologos[matched_idx, "humano"]
+rownames(mouse_counts) <- converted_names
+
+# para el metadata:
+meta.df <- so_12_SP_merge_C9KO@meta.data
+meta.df <- meta.df[colnames(mouse_counts), , drop = FALSE]
+
+so_12_SP_merge_C9KO_human <- CreateSeuratObject(
+  counts    = mouse_counts,
+  meta.data = meta.df
+)
+so_12_SP_merge_C9KO_human
+```
+
+```{r}
+saveRDS(so_12_SP_merge_C9KO_human, file = "so_12_SP_merge_C9KO_human_int.rds")
+so_12_SP_merge_C9KO_human <- readRDS("so_12_SP_merge_C9KO_human_int.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# . 
+
+# codigo por si quiero renombrar o corregir un valor
+```{r}
+so_12_SP_merge$cell_types_WT[
+  so_12_SP_merge$cell_types_WT == "21.GLUT_IPC_ambiguous"
+] <- "21.CR"
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
