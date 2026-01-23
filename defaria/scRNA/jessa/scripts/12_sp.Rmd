@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r, warning = FALSE, message = FALSE}
 library(dplyr)
 library(Seurat)
-library(DropletQC)
+#library(DropletQC)
 library(Matrix)
 library(SoupX)
 library(presto)
@@ -29,7 +29,7 @@ library(limma)
 library(ggplot2)
 library(ggrepel)
 library(patchwork)
-library(monocle3)
+#library(monocle3)
 library(SeuratWrappers)
 library(clustree)
 library(tibble)
@@ -612,6 +612,7 @@ write.csv(df_stats, "results_12_sp/tablas/cells_genes_per_sample_12_sp_postfilte
 
 rm(genes_por_muestra_KO, genes_por_muestra_WT, df_stats)
 ```
+
 
 
 # guardado objetos postfiltrados

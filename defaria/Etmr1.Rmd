@@ -30,7 +30,7 @@ library(limma)
 library(ggplot2)
 library(ggrepel)
 library(patchwork)
-library(monocle3)
+#library(monocle3)
 library(SeuratWrappers)
 library(clustree)
 library(tibble)
@@ -230,7 +230,7 @@ so_etmr1 <- readRDS("so_etmr1_postfiltered.rds")
 ```
 
 ```{r}
-so_etmr1 <- readRDS("/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/so_etmr1_postfiltered.rds")
+so_etmr1 <- readRDS("/home/sofia/Projects/etmr/defaria/scRNA/jessa/data/processed/objects/so_etmr1_postfiltered.rds")
 ```
 
 # normalizamos
@@ -252,6 +252,10 @@ so_etmr1 <- FindVariableFeatures(so_etmr1, selection.method = "vst", nfeatures =
 # Escalado y regresión de nUMI (nCount_RNA) y % mitocondrial: paper
 so_etmr1 <- ScaleData(so_etmr1, vars.to.regress = c("nCount_RNA", "percent.mt"))
 ```
+```{r}
+Features(so_etmr1)[order(Features(so_etmr1))]
+```
+
 
 # PCA
 
