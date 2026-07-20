@@ -24,3 +24,9 @@ de Faria/snRNA/scripts/snrna.data
 *.png
 *.h5
 *.rds
+*.qs2
+*genome*
+*.fa*
+*sra*
+*cellranger*
+defaria/scRNA/data/raw/*

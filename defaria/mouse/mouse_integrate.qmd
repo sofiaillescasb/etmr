@@ -1,0 +1,2275 @@
+---
+title: "mouse integration"
+format: html
+editor: visual
+---
+
+```{r, include=FALSE}
+library(here) 
+library(dplyr) 
+library(tibble) 
+library(Seurat) 
+library(SeuratDisk) 
+library(SeuratObject) 
+library(SeuratWrappers) 
+library(ggplot2) 
+library(gt) 
+library(patchwork) 
+library(tidyr) 
+library(monocle3) 
+# library(ggprism) 
+# library(fgsea) 
+library(future) 
+options(future.globals.maxSize = 16 * 1024^3) # 16 GB 
+library(qs2)
+library(SingleR)
+library(paletteer)
+library(htmlwidgets)
+```
+
+## Read data
+
+```{r load}
+snrna.data <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/preprocessed/human_prep.qs2", nthreads = 6)
+wt_mouse <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/wt_prep.qs2", nthreads = 6)
+ko_mouse <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/ko_prep.qs2", nthreads = 6)
+
+#Process data for integration
+
+##The originals were lists of seurat objects by sample with data, scale.data, variable features, pca, and umap
+
+snrna.data <- lapply(snrna.data, function(x) {
+  x <- DietSeurat(x, layers = "counts")
+  x@meta.data <- x@meta.data |> rename(DF.classification = starts_with("DF"), pANN = starts_with("pANN"))
+  x
+  })
+
+snrna.data <- Reduce(
+  f = merge,
+  x = snrna.data
+)
+
+snrna.data <- JoinLayers(snrna.data)
+
+gc()
+
+qs_save(snrna.data, "/home/sofia/Projects/etmr/defaria/mouse/data/human_prep_merge.qs2", nthreads = 6)
+
+wt_mouse <- lapply(wt_mouse, function(x) {
+  x <- DietSeurat(x, layers = "counts")
+  x@meta.data <- x@meta.data |> rename(DF.classification = starts_with("DF"), pANN = starts_with("pANN"))
+  x
+  })
+
+wt_mouse <- Reduce(
+  f = merge,
+  x = wt_mouse
+)
+
+wt_mouse <- JoinLayers(wt_mouse)
+
+gc()
+
+ko_mouse <- lapply(ko_mouse, function(x) {
+  x <- DietSeurat(x, layers = "counts")
+  x@meta.data <- x@meta.data |> rename(DF.classification = starts_with("DF"), pANN = starts_with("pANN"))
+  x
+  })
+
+
+ko_mouse <- Reduce(
+  f = merge,
+  x = ko_mouse
+)
+
+ko_mouse <- JoinLayers(ko_mouse)
+
+gc()
+
+
+```
+
+## Convert to orthologs
+
+```{r convert_genes}
+
+library(orthogene)
+
+mouse_list <- list(wt = wt_mouse, ko = ko_mouse)
+
+all_genes <- union(rownames(mouse_list$wt), rownames(mouse_list$ko))
+
+all_ortho <- convert_orthologs(all_genes, input_species = "mouse", output_species = "human") |> 
+  rownames_to_column("human") |> 
+  rename(mouse = input_gene) |> 
+  select(c(human, mouse)) |> 
+  distinct()
+
+
+mouse_list <- lapply(mouse_list, function(x) {
+  x <- x[all_ortho$mouse]
+  x
+})
+
+genes <- rownames(mouse_list$wt)
+new_names <- all_ortho$human[match(genes, all_ortho$mouse)]
+rownames(mouse_list$wt) <- new_names
+
+genes <- rownames(mouse_list$ko)
+new_names <- all_ortho$human[match(genes, all_ortho$mouse)]
+rownames(mouse_list$ko) <- new_names
+
+gc()
+
+qs_save(mouse_list$wt, file = "/home/sofia/Projects/etmr/defaria/mouse/data/wt_ortho_prep.qs2", nthreads = 6)
+qs_save(mouse_list$ko, file =  "/home/sofia/Projects/etmr/defaria/mouse/data/ko_ortho_prep.qs2", nthreads = 6)
+
+#Time to filter the datasets so they are on the same gene space
+mouse_rownames <- intersect(rownames(mouse_list$wt), rownames(mouse_list$ko))
+
+genes_in_common <- intersect(rownames(snrna.data), mouse_rownames)
+tumor_to_merge <- snrna.data[genes_in_common]
+
+mouse_list_to_merge <- lapply(mouse_list, function(x) {
+  x <- x[genes_in_common]
+  x
+  })
+
+```
+
+```{r merge}
+merged_data <- merge(x = tumor_to_merge, y = mouse_list_to_merge, add.cell.ids = c("human", "wt", "ko"))
+
+gc()
+
+merged_data <- JoinLayers(merged_data)
+
+merged_data[["RNA"]] <- split(merged_data[["RNA"]], f = merged_data$orig.ident)
+
+gc()
+
+merged_data <- NormalizeData(merged_data)
+merged_data <- FindVariableFeatures(merged_data)
+merged_data <- ScaleData(merged_data, features = VariableFeatures(merged_data))
+
+gc()
+
+#PCA
+merged_data <- RunPCA(merged_data)
+
+gc()
+
+DimPlot(merged_data, group.by = "DF.classification")
+
+qs_save(merged_data, "/home/sofia/Projects/etmr/defaria/mouse/data/merge_data.qs2", nthreads = 6)
+
+```
+
+## Integrate
+
+```{r integrate}
+
+merged_data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/merge_data.qs2", nthreads = 5)
+
+DefaultAssay(merged_data) <- "RNA"
+
+
+#Integrate
+integrated_data <- IntegrateLayers(
+  merged_data,
+  method = SeuratWrappers::FastMNNIntegration
+)
+
+gc()
+
+qs_save(integrated_data, "/home/sofia/Projects/etmr/defaria/mouse/data/int_data.qs2", nthreads = 6)
+
+DimPlot(integrated_data, reduction = "integrated.mnn", group.by = "DF.classification")
+
+integrated_data <- FindNeighbors(integrated_data, reduction = "integrated.mnn", dims = 1:30)
+integrated_data <- FindClusters(integrated_data, resolution = 1, algorithm = 4, random.seed = 2026)
+integrated_data <- RunUMAP(integrated_data, reduction = "integrated.mnn", dims = 1:30)
+
+gc()
+
+plots_1 <- DimPlot(integrated_data, reduction = "umap", group.by = c("condition", "RNA_snn_res.0.8", "orig.ident", "DF.classification"), raster = FALSE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/plots_1_doub.png", plots_1, width = 14, height = 15, units = "in")
+
+qs_save(integrated_data, file = "/home/sofia/Projects/etmr/defaria/mouse/data/int_data_doub.qs2", nthreads = 6)
+
+colnames(integrated_data@meta.data)
+```
+
+```{r}
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+mnn_umapdf <- integrated_data@meta.data |>
+  dplyr::select(orig.ident, RNA_snn_res.0.8, condition, DF.classification) |>
+  dplyr::mutate(RNA_snn_res.0.8 = as.factor(as.numeric(RNA_snn_res.0.8))) |>
+  rownames_to_column("cell")
+
+mnn_hist_doub <- plot_hist(mnn_umapdf, "RNA_snn_res.0.8", "DF.classification") + labs(title = "Doublet", fill = "Doublet")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mnn_hist_doub.png", mnn_hist_doub, width = 8, height = 6, units = "in")
+
+mnn_hist_id <- plot_hist(mnn_umapdf, "RNA_snn_res.0.8", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mnn_hist_id_doub.png", mnn_hist_id, width = 8, height = 6, units = "in")
+
+mnn_hist_cond <- plot_hist(mnn_umapdf, "RNA_snn_res.0.8", "condition") + labs(title = "Condition", fill = "Condition")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mnn_hist_cond_doub.png", mnn_hist_cond, width = 8, height = 6, units = "in")
+```
+
+```{r genes}
+cellmarkers <- list(
+    "Astrocytes" = c("GFAP", "ALDH1L1", "S100B", "SLC1A2", "ACSL6", "AGT"),
+    "Oligodendrocytes" = c("MBP", "MOG", "CLDN14", "NIPAL4", "PLP1", "ERMN", "CLDN14", "KLK6", "EML1"),
+    "Oligodendrocyte progenitors" = c("PDGFRA", "ALDOC", "OLIG1", "EPN2", "NEU4", "NKX6-2", "SOX10", "FYN"),
+    "Microglia" = c("RGS10", "DLEU7", "CD40", "CD68", "ITGAM", "CX3CR1", "TMEM119"),
+    "PC" = c("COL1A2", "PDGFRB", "ANXA2", "RGS5", "ACTA2"),
+    "EC" = c("CLDN5", "CD31"),
+    "Neuroblasts" = c("DCX", "NEUROG1", "NCAM1", "NEUROD1"),
+    "Neurons (general)" = c("DISP2", "PRPH", "CNTNAP2", "RBFOX3", "NEFM", "NRGN", "SGIP1", "ENO2"),
+    "GABA" = c("GAD1", "GAD2", "SLC6A1", "SLC32A1", "DLX1", "GABBR2", "GADD45B", "PAX2"),
+    "Glutamatergic" = c("SLC17A6", "SLC17A7", "SLC17A8"),
+    "Cycling" = c("TOP2A", "MKI67", "AURKA"),
+    "IPC" = c("EOMES", "HES6", "NEUROD4"),
+    "RDG" = c("PAX6", "SLC1A3", "PDGFD", "GLI3", "NOTCH3", "VCAM1", "HES5", "CDH4", "SPRY1", "AXIN2", "SOX2", "VIM", "NES"),
+  "T-cell" = c("CD2", "CD3E", "CD52", "PTPRC"),
+    "ETMR" = c("ABCB5", "ACRV1", "ACVR2A", "ACVR2B", "ADAM7", "AGO1", "AGPS", "APELA", "BLTP3A", "C16orf82", "C22orf42", "CALHM4", "CBX2", "CCDC150", "CCNE1", "CCNJ", "CCNT2", "CDC25A", "CDC7", "CHAC2", "CHRNA5", "CHRNB4", "CRABP1", "CRYGC", "CSAG2", "CSAG3", "CTCFL", "CTPS1", "CXXC4", "CYP27C1", "DAAM1", "DEPDC1B", "DIS3L2", "DNA2", "DNMT3B", "DTX4", "EPB41", "EVX2", "EXOSC7", "FAM161A", "FANCD2OS", "FIGNL2", "FOXB1", "GABRR1", "GATA3", "GBX1", "GJC1", "GPR20", "GREB1", "GREB1L", "H1-2", "H2BC11", "H2BC26", "H2BC9", "H3C15", "HCRTR2", "HELLS", "HES5", "HIC2", "HMX2", "HOXA1", "HOXA3", "HOXB1", "HRC", "IDH1", "IGF2BP1", "INSM2", "KCNH8", "KLHL23", "KPNA2", "LBX1", "LCOR", "LIN28A", "LIN28B", "MAGEA10", "MAGEA12", "MAGEA2B", "MAGEA3", "MAGEA6", "MBTD1", "MEIS1", "MSH2", "MTF2", "MTTP", "NDST4", "NEUROG3", "NHEJ1", "NKX1-1", "NKX1-2", "NKX6-3", "NPPC", "NR6A1", "NSD2", "NUP210", "NUP62CL", "ONECUT1", "ORC1", "OTP", "P2RX3", "PAPOLG", "PBX2", "PDE7A", "PGAP1", "PHF6", "PHOX2B", "PIK3C2B", "PLEKHA8", "PMFBP1", "POLQ", "POTEE", "POTEF", "POTEI", "PRDM12", "PRDM13", "PRDM5", "PRIM1", "PRTG", "PTBP2", "RAD54L2", "RALGPS2", "RARB", "RASAL2", "RNF152", "RPS6KA6", "RRM2", "RTKN2", "SALL4", "SANBR", "SCML2", "SCML4", "SCN11A", "SCUBE3", "SEMG2", "SERTM2", "SESTD1", "SFRP2", "SHISA3", "SINHCAF", "SMARCC1", "SOX11", "SOX14", "SOX3", "SP8", "SPSB4", "SRPK1", "STK26", "STRBP", "SUV39H2", "TIA1", "TMC4", "TRIM71", "TSGA10IP", "ULBP3", "USP44", "VSX2", "WNT7A", "ZBTB39", "ZFHX3", "ZNF439", "ZNF462", "ZNF48", "ZNF608", "ZNF620", "ZNF71"),
+
+"NEC (Sol)" = c("MDK",
+         "MIF",
+         "AC090498.1",
+         "PSMA4",
+         "SMS",
+         "HSPA5",
+         "RANBP1",
+         "TPM1",
+         "IGFBP2",
+         "PFN1",
+         "OSTC",
+         "HMGA1",
+         "LAPTM4A",
+         "MYL12A",
+         "PDIA6",
+         "PRELID1",
+         "ARF4",
+         "OCIAD2",
+         "MAD2L1",
+         "PDIA3",
+         "KPNA2",
+         "AKR1B1",
+         "EIF4E",
+         "TMED9",
+         "MRPL42"),
+
+"NEC2" = c(
+  "ID3",
+  "PRTG",
+  "WNT8B"
+)
+)
+
+cellmarkers <- list(
+
+  # Tumor stem / radial glia-like
+  RDG = c(
+    "PAX6","SOX2","VIM","NES",
+    "HES1","HES5","FABP7","SLC1A3",
+    "PTN","HMGA2"
+  ),
+
+  # Neuroepithelial progenitor
+  NEC = c(
+    "MDK",
+         "MIF",
+         "AC090498.1",
+         "PSMA4",
+         "SMS",
+         "HSPA5",
+         "RANBP1",
+         "TPM1",
+         "IGFBP2",
+         "PFN1",
+         "OSTC",
+         "HMGA1",
+         "LAPTM4A",
+         "MYL12A",
+         "PDIA6",
+         "PRELID1",
+         "ARF4",
+         "OCIAD2",
+         "MAD2L1",
+         "PDIA3",
+         "KPNA2",
+         "AKR1B1",
+         "EIF4E",
+         "TMED9",
+         "MRPL42"
+  ),
+
+  # IPC
+  IPC= c(
+    "EOMES", "HES6", "NEUROD4"
+  ),
+
+  # Immature neurons
+  Neuroblasts = c(
+    "DCX","NCAM1",
+    "NEUROD1","NEUROD2",
+    "STMN2","TUBB3"
+  ),
+
+  # Excitatory neurons
+  Glut = c(
+    "SLC17A6","SLC17A7",
+    "EMX1","TBR1","BCL11B"
+  ),
+
+  # Inhibitory neurons
+  GABA = c(
+    "GAD1","GAD2",
+    "SLC32A1","DLX1","DLX2",
+    "LHX6","NKX2-1"
+  ),
+
+  # Mature neurons
+  Neurons = c(
+    "RBFOX3","SNAP25",
+    "SYT1","ELAVL4","NEFM"
+  ),
+
+  # Astrocytes
+  Astrocytes = c(
+    "ALDH1L1","AQP4",
+    "GFAP","GLUL","SLC1A2"
+  ),
+
+  # OPC
+  OPC = c(
+    "PDGFRA","CSPG4",
+    "OLIG1","OLIG2","SOX10"
+  ),
+
+  # Oligodendrocytes
+  Oligodendrocytes = c(
+    "MBP","MOG","PLP1",
+    "CNP","MOBP"
+  ),
+
+  # Microglia
+  Microglia = c(
+    "AIF1","TMEM119",
+    "P2RY12","CX3CR1",
+    "TYROBP","HEXB"
+  ),
+
+  # Endothelial
+  Endothelial = c(
+    "CLDN5","FLT1",
+    "KDR","EMCN","PECAM1"
+  ),
+
+  # Pericytes
+  Pericytes = c(
+    "PDGFRB","RGS5",
+    "CSPG4","DES","MCAM"
+  ),
+
+  # Fibroblasts
+  Fibroblasts = c(
+    "COL1A1","COL1A2",
+    "DCN","LUM"
+  ),
+
+  # T cells
+  Tcell = c(
+    "CD2","CD3D",
+    "CD3E","PTPRC"
+  ),
+
+  # Cell cycle
+  Cycling = c(
+    "MKI67","TOP2A",
+    "AURKA","UBE2C"
+  )
+)
+
+```
+
+```{r}
+FeaturePlot(integrated_data, features = c("GAD1", "GAD2", "SLC17A6", "SLC17A7"), order = TRUE, raster = TRUE)
+# FeaturePlot(integrated_data, features = cellmarkers$Glutamatergic, order = TRUE, raster = TRUE)
+DimPlot(integrated_data, reduction = "umap", group.by = "DF.classification", raster = TRUE)
+```
+
+```{r annotation_all}
+
+for (x in names(cellmarkers)) {
+  integrated_data <- AddModuleScore(
+    integrated_data,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+mnn_feat_origcol <- FeaturePlot(integrated_data, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 3, 
+                            reduction = "umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, raster = FALSE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mnn_feat_origcol_doub.png", mnn_feat_origcol,height = 16, width = 12, units = "in")
+
+mnn_type_long <- integrated_data@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    RNA_snn_res.0.8, 
+    paste0(names(cellmarkers),"1"),
+    paste0(names(cellmarkers),"1")
+    ) |>
+  pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              RNA_snn_res.0.8), names_to = "cell_type"
+    )
+  
+violin_mnn <- mnn_type_long |>
+  dplyr::filter(cell_type %in% c(paste0(names(cellmarkers), "1"))) |>
+  dplyr::group_by(cell_type, RNA_snn_res.0.8) |>
+  dplyr::filter(mean(value, na.rm = TRUE) > 0 & median(value, na.rm = TRUE) > 0) |>
+  dplyr::ungroup() |>
+  ggplot(aes(x = RNA_snn_res.0.8, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type), scales = "free")
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mnn_celltype_violin_doub.png"), violin_mnn,height = 12, width = 18, units = "in")
+
+celltype <- c(
+  "1"= "RGC",
+  "2"= "Neurons_immature",
+  "3"= "NEC-like RGC",
+  "4"= "NEC-like RGC",
+  "5"= "NEC-like RGC",
+  "6"= "Neurons_immature_GABA",
+  "7"= "Neurons_immature_GABA",
+  "8"= "NEC-like RGC",
+  "9"= "NEC-like RGC",
+  "10"= "IPC_GABA",
+  "11"= "RGC",
+  "12"= "Neurons_Glut",
+  "13"= "RGC",
+  "14"= "Neuroblasts_Glut",
+  "15"= "NEC-like RGC",
+  "16"= "Neuroblasts_GABA",
+  "17"= "Neuroblasts",
+  "18"= "IPC_GABA",
+  "19"= "Neuroblasts_GABA",
+  "20"= "NEC-like RGC",
+  "21"= "Neuroblasts_Glut",
+  "22"= "IPC_Glut",
+  "23" = "Neurons_GABA",
+  "24" = "NEC-like RGC",
+  "25" = "Astrocytes",
+  "26" = "PC",
+  "27" = "Microglia",
+  "28" = "Neuroblasts_Glut",
+  "29" = "IPC",
+  "30" = "Oligodendrocytes"
+)
+
+
+Idents(integrated_data) <- "RNA_snn_res.0.8"
+
+integrated_data@meta.data["celltype_mnn"]  <- celltype[as.character(Idents(integrated_data))]
+
+celltype_plot_mnn <- DimPlot(integrated_data,
+        reduction = "umap",
+        group.by = "celltype_mnn",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .1,
+        shuffle = TRUE,
+        alpha = .5
+        ) + ggtitle("MNN cell type")
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/celltype_plot_mnn.png"), celltype_plot_mnn, height = 7, width = 8, units = "in")
+
+clus_plot_mnn <- DimPlot(integrated_data,
+        reduction = "umap",
+        group.by = "RNA_snn_res.0.8",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .1,
+        shuffle = TRUE,
+        alpha = .5
+        ) + ggtitle("MNN clusters res 0.8") + NoLegend()
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/clus_plot_mnn_doub.png"), clus_plot_mnn, height = 7, width = 8, units = "in")
+
+```
+
+## Remove doublets
+
+```{r remove}
+merged_data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/merge_data.qs2", nthreads = 6)
+
+merged_data <- DietSeurat(merged_data, layers = "counts")
+
+merged_data <- subset(merged_data, subset = DF.classification == "Singlet")
+
+gc()
+
+merged_data <- NormalizeData(merged_data)
+merged_data <- FindVariableFeatures(merged_data)
+merged_data <- ScaleData(merged_data, features = VariableFeatures(merged_data))
+
+gc()
+
+#PCA
+merged_data <- RunPCA(merged_data)
+
+
+#Integrate
+integrated_data <- IntegrateLayers(
+  merged_data,
+  method = SeuratWrappers::FastMNNIntegration
+)
+
+gc()
+
+qs_save(integrated_data, "/home/sofia/Projects/etmr/defaria/mouse/data/int_data_sing.qs2", nthreads = 6)
+
+
+integrated_data <- FindNeighbors(integrated_data, reduction = "integrated.mnn", dims = 1:30)
+integrated_data <- FindClusters(integrated_data, resolution = 1, algorithm = 4, random.seed = 2026)
+integrated_data <- RunUMAP(integrated_data, reduction = "integrated.mnn", dims = 1:30)
+
+gc()
+
+plots_1 <- DimPlot(integrated_data, reduction = "umap", group.by = c("condition", "RNA_snn_res.0.8", "orig.ident"), raster = FALSE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/plots_1_sing.png", plots_1, width = 18, height = 7, units = "in")
+
+qs_save(integrated_data, file = "/home/sofia/Projects/etmr/defaria/mouse/data/int_data_sing.qs2", nthreads = 6)
+
+cellmarkers <- list(
+
+  # Tumor stem / radial glia-like
+  RDG = c(
+    "PAX6","SOX2","VIM","NES",
+    "HES1","HES5","FABP7","SLC1A3",
+    "PTN","HMGA2"
+  ),
+
+  # Neuroepithelial progenitor
+  NEC = c(
+    "MDK",
+         "MIF",
+         "AC090498.1",
+         "PSMA4",
+         "SMS",
+         "HSPA5",
+         "RANBP1",
+         "TPM1",
+         "IGFBP2",
+         "PFN1",
+         "OSTC",
+         "HMGA1",
+         "LAPTM4A",
+         "MYL12A",
+         "PDIA6",
+         "PRELID1",
+         "ARF4",
+         "OCIAD2",
+         "MAD2L1",
+         "PDIA3",
+         "KPNA2",
+         "AKR1B1",
+         "EIF4E",
+         "TMED9",
+         "MRPL42"
+  ),
+
+  # IPC
+  IPC= c(
+    "EOMES", "HES6", "NEUROD4"
+  ),
+
+  # Immature neurons
+  Neuroblasts = c(
+    "DCX","NCAM1",
+    "NEUROD1","NEUROD2",
+    "STMN2","TUBB3"
+  ),
+
+  # Excitatory neurons
+  Glut = c(
+    "SLC17A6","SLC17A7",
+    "EMX1","TBR1","BCL11B"
+  ),
+
+  # Inhibitory neurons
+  GABA = c(
+    "GAD1","GAD2",
+    "SLC32A1","DLX1","DLX2",
+    "LHX6","NKX2-1"
+  ),
+
+  # Mature neurons
+  Neurons = c(
+    "RBFOX3","SNAP25",
+    "SYT1","ELAVL4","NEFM"
+  ),
+
+  # Astrocytes
+  Astrocytes = c(
+    "ALDH1L1","AQP4",
+    "GFAP","GLUL","SLC1A2"
+  ),
+
+  # OPC
+  OPC = c(
+    "PDGFRA","CSPG4",
+    "OLIG1","OLIG2","SOX10"
+  ),
+
+  # Oligodendrocytes
+  Oligodendrocytes = c(
+    "MBP","MOG","PLP1",
+    "CNP","MOBP"
+  ),
+
+  # Microglia
+  Microglia = c(
+    "AIF1","TMEM119",
+    "P2RY12","CX3CR1",
+    "TYROBP","HEXB"
+  ),
+
+  # Endothelial
+  Endothelial = c(
+    "CLDN5","FLT1",
+    "KDR","EMCN","PECAM1"
+  ),
+
+  # Pericytes
+  Pericytes = c(
+    "PDGFRB","RGS5",
+    "CSPG4","DES","MCAM"
+  ),
+
+  # Fibroblasts
+  Fibroblasts = c(
+    "COL1A1","COL1A2",
+    "DCN","LUM"
+  ),
+
+  # T cells
+  Tcell = c(
+    "CD2","CD3D",
+    "CD3E","PTPRC"
+  ),
+
+  # Cell cycle
+  Cycling = c(
+    "MKI67","TOP2A",
+    "AURKA","UBE2C"
+  )
+)
+
+FeaturePlot(integrated_data, features = c("GAD1", "GAD2", "SLC17A6", "SLC17A7", "EMX1","TBR1","BCL11B"), order = TRUE)
+# FeaturePlot(integrated_data, features = cellmarkers$Glutamatergic, order = TRUE, raster = TRUE)
+DimPlot(integrated_data, reduction = "umap", group.by = "DF.classification")
+
+for (x in names(cellmarkers)) {
+  integrated_data <- AddModuleScore(
+    integrated_data,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+mnn_feat_origcol <- FeaturePlot(integrated_data, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, raster = FALSE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mnn_feat_origcol_sing.png", mnn_feat_origcol,height = 16, width = 18, units = "in")
+
+mnn_type_long <- integrated_data@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    RNA_snn_res.0.8, 
+    paste0(names(cellmarkers),"1"),
+    paste0(names(cellmarkers),"1")
+    ) |>
+  pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              RNA_snn_res.0.8), names_to = "cell_type"
+    )
+  
+violin_mnn <- mnn_type_long |>
+  dplyr::filter(cell_type %in% c(paste0(names(cellmarkers), "1"))) |>
+  dplyr::group_by(cell_type, RNA_snn_res.0.8) |>
+  dplyr::filter(mean(value, na.rm = TRUE) > 0 & median(value, na.rm = TRUE) > 0) |>
+  dplyr::ungroup() |>
+  ggplot(aes(x = RNA_snn_res.0.8, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type), scales = "free")
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mnn_celltype_violin_sing.png"), violin_mnn,height = 12, width = 18, units = "in")
+
+celltype <- c(
+  "1"= "Neurons_immature",
+  "2"= "RGC",
+  "3"= "RGC_NEC-like",
+  "4"= "RGC_NEC-like",
+  "5"= "RGC_cycling",
+  "6"= "RGC",
+  "7"= "Neurons_GABA",
+  "8"= "Neurons_immature",
+  "9"= "RGC_NEC-like",
+  "10"= "IPC_GABA",
+  "11"= "RGC_cycling",
+  "12"= "Neurons_immature",
+  "13"= "RGC_NEC-like",
+  "14"= "Neurons_immature",
+  "15"= "RGC_cycling",
+  "16"= "IPC_GABA",
+  "17"= "Neurons_immature_Glut",
+  "18"= "Neurons_immature_Glut",
+  "19"= "Neurons_immature_GABA",
+  "20"= "Neurons_immature",
+  "21"= "Neurons_immature",
+  "22"= "RGC_NEC-like",
+  "23" = "IPC_Glut",
+  "24" = "Astrocytes",
+  "25" = "PC",
+  "26" = "Microglia",
+  "27" = "IPC_cycling",
+  "28" = "Oligodendrocytes"
+)
+
+
+Idents(integrated_data) <- "RNA_snn_res.0.8"
+
+integrated_data@meta.data["celltype_mnn"]  <- celltype[as.character(Idents(integrated_data))]
+
+celltype_plot_mnn_sing <- DimPlot(integrated_data,
+        reduction = "umap",
+        group.by = "celltype_mnn",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .1,
+        shuffle = TRUE,
+        alpha = .5
+        ) + ggtitle("MNN cell type")
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/celltype_plot_mnn_sing.png"), celltype_plot_mnn_sing, height = 7, width = 8, units = "in")
+
+clus_plot_mnn_sing <- DimPlot(integrated_data,
+        reduction = "umap",
+        group.by = "RNA_snn_res.0.8",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .1,
+        shuffle = TRUE,
+        alpha = .5
+        ) + ggtitle("MNN clusters res 1.2") + NoLegend()
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/clus_plot_mnn_sing.png"), clus_plot_mnn_sing, height = 7, width = 8, units = "in")
+
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+mnn_umapdf <- integrated_data@meta.data |>
+  dplyr::select(orig.ident, RNA_snn_res.0.8, condition, DF.classification) |>
+  dplyr::mutate(RNA_snn_res.0.8 = as.factor(as.numeric(RNA_snn_res.0.8))) |>
+  rownames_to_column("cell")
+
+
+mnn_hist_id <- plot_hist(mnn_umapdf, "RNA_snn_res.0.8", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mnn_hist_id_sing.png", mnn_hist_id, width = 8, height = 6, units = "in")
+
+mnn_hist_cond <- plot_hist(mnn_umapdf, "RNA_snn_res.0.8", "condition") + labs(title = "Condition", fill = "Condition")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mnn_hist_cond_sing.png", mnn_hist_cond, width = 8, height = 6, units = "in")
+
+
+```
+
+## Previously eliminated clusters
+
+```{r}
+annotated_mouse <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/data/so_12_SP_KO_con_12_20_25.rds")
+
+sol_plot <- DimPlot(annotated_mouse, group.by = "cell_types_KO") 
+DimPlot(annotated_mouse, group.by = "seurat_clusters", label = TRUE) 
+
+sel_cells <- rownames(annotated_mouse@meta.data |>
+  dplyr::filter(seurat_clusters %in% c(12, 20, 25)))
+
+write.csv(sel_cells, file = "/home/sofia/Projects/etmr/defaria/mouse/tables/so_12_SP_KO_con_12_20_25.csv")
+
+integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/int_data.qs2", nthreads = 5)
+
+new_cell_names <- gsub("^(wt|ko)_12_", "12_", Cells(integrated_data))
+
+integrated_data <- RenameCells(
+  integrated_data,
+  new.names = new_cell_names
+)
+
+DimPlot(integrated_data, cells.highlight = sel_cells, split.by = "celltype_mnn", raster = FALSE)
+
+
+```
+
+### Trying just with mouse
+
+```{r}
+wt_mouse <- readRDS(paste0(here::here(), "/defaria/mouse/data/so_12_SP_WT_prefiltered.rds"))
+ko_mouse <- readRDS(paste0(here::here(), "/defaria/mouse/data/so_12_SP_KO_prefiltered.rds"))
+
+
+#Fix weird column names
+
+wt_mouse@meta.data$orig.ident <- wt_mouse@meta.data$sample_origin
+ko_mouse@meta.data$orig.ident <- ko_mouse@meta.data$sample_origin
+
+#Get layers for each sample
+wt_mouse[["RNA"]] <- split(wt_mouse[["RNA"]], f = wt_mouse$orig.ident)
+ko_mouse[["RNA"]] <- split(ko_mouse[["RNA"]], f = ko_mouse$orig.ident)
+
+#Merge
+mouse_merge <- merge(wt_mouse, ko_mouse, add.cell.ids = c("wt", "ko"))
+
+#Preprocess
+mouse_merge[["percent.mt"]] <- PercentageFeatureSet(mouse_merge, pattern = "^mt-")
+mouse_merge <- subset(mouse_merge, subset = nFeature_RNA > 250 & nFeature_RNA < 9000 & nCount_RNA < 75000)
+
+mouse_merge <- NormalizeData(mouse_merge)
+mouse_merge <- FindVariableFeatures(mouse_merge)
+mouse_merge <- ScaleData(mouse_merge, features = VariableFeatures(mouse_merge))
+
+#PCA
+mouse_merge <- RunPCA(mouse_merge)
+
+#UMAP and clustering
+mouse_merge <- FindNeighbors(mouse_merge, dims = 1:30)
+mouse_merge <- FindClusters(mouse_merge, resolution = .8, algorithm = 4, random.seed = 2026)
+mouse_merge <- RunUMAP(mouse_merge, dims = 1:30)
+
+
+
+#Make barcodes coompatible with previous analysis
+new_cell_names <- gsub("^(wt|ko)_12_", "12_", Cells(mouse_merge))
+
+mouse_merge <- RenameCells(
+  mouse_merge,
+  new.names = new_cell_names
+)
+
+
+#Plotting
+plots_0_8_mouse <- DimPlot(mouse_merge, reduction = "umap", group.by = c("condition", "RNA_snn_res.0.8", "orig.ident"), raster = FALSE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/plots_0_8_mouse.png", plots_0_8_mouse, width = 18, height = 6, units = "in")
+
+plots_0_8_mouse_cond <- DimPlot(mouse_merge, reduction = "umap", group.by = c("condition"), raster = FALSE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/plots_0_8_mouse_cond.png", plots_0_8_mouse_cond, width = 8, height = 6, units = "in")
+
+clus_mouse_plot <- DimPlot(mouse_merge, reduction = "umap", group.by = "RNA_snn_res.0.8", raster = FALSE, label = TRUE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/clus_mouse_plot.png", clus_mouse_plot, width = 8, height = 6, units = "in")
+
+deleted_cells_plot <- DimPlot(mouse_merge, reduction = "umap", cells.highlight =list("12_20_25" = sel_cells), raster = FALSE, sizes.highlight=.1)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/deleted_cells_plot.png", deleted_cells_plot, width = 8, height = 6, units = "in")
+
+deleted_cells_plot_split <- DimPlot(mouse_merge, reduction = "umap", cells.highlight = list("12_20_25" = sel_cells), raster = FALSE, split.by = "orig.ident", ncol = 3, sizes.highlight=.1)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/deleted_cells_plot_split.png", deleted_cells_plot_split, width = 8, height = 6, units = "in")
+
+sel_cel_clusters <- DimPlot(mouse_merge, reduction = "umap", cells = sel_cells, raster = FALSE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/sel_cel_clusters.png", sel_cel_clusters, width = 8, height = 6, units = "in")
+
+unsel_cel_clusters <- DimPlot(mouse_merge, reduction = "umap", cells = setdiff(Cells(mouse_merge), sel_cells), raster = FALSE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/unsel_cel_clusters.png", unsel_cel_clusters, width = 8, height = 6, units = "in")
+
+sel_cel_split_con <- DimPlot(mouse_merge, reduction = "umap", cells.highlight = list("12_20_25" = sel_cells), raster = FALSE, split.by = "condition", sizes.highlight=.1)  + ggtitle("Selected cells in mouse split by condition")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/sel_cel_split_con.png", sel_cel_split_con, width = 8, height = 6, units = "in")
+
+sel_cel_int_human <- DimPlot(integrated_data, reduction = "umap", cells.highlight =list("12_20_25" = sel_cells), raster = FALSE, sizes.highlight=.1, group.by = "condition") + ggtitle("Selected cells in mouse-human MNN integration")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/sel_cel_int_human.png", sel_cel_int_human, width = 8, height = 6, units = "in")
+
+#Let's visualize the clustering of the deleted cells
+mouse_merge@meta.data["Deleted"] <- rownames(mouse_merge@meta.data) %in% sel_cells
+
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+del_umapdf <- mouse_merge@meta.data |>
+  dplyr::select(orig.ident, RNA_snn_res.0.8, Deleted, condition) |>
+  rownames_to_column("cell")
+
+mouse_hist_id <- plot_hist(del_umapdf, "RNA_snn_res.0.8", "orig.ident") + labs(title = "Percentage of sample per cluster",  x = "Leiden clusters res .8")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mouse_hist_id.png", mouse_hist_id, width = 8, height = 6, units = "in")
+
+mouse_hist_cond <- plot_hist(del_umapdf, "RNA_snn_res.0.8", "condition") + labs(title = "Percentage of condition per cluster",  x = "Leiden clusters res .8")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mouse_hist_cond.png", mouse_hist_cond, width = 8, height = 6, units = "in")
+
+del_hist_clus <- plot_hist_oneval(del_umapdf, "RNA_snn_res.0.8", "Deleted") + labs(title = "Percentage of deleted cells per cluster",  x = "Leiden clusters res .8")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/del_hist_clus.png", del_hist_clus, width = 8, height = 6, units = "in")
+
+del_hist_id <- plot_hist(del_umapdf, "Deleted", "orig.ident") + labs(title = "Percentage of cells deleted per ID", fill = "ID", x = "Leiden clusters res .8")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/del_hist_id.png", del_hist_id, width = 8, height = 6, units = "in")
+
+del_hist_id_t <- plot_hist_oneval(del_umapdf, "orig.ident", "Deleted") + labs(title = "Percentage of deleted cells per ID", x = "ID", y = "Percentage") 
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/del_hist_id_t.png", del_hist_id_t, width = 8, height = 6, units = "in")
+
+
+mouse_hists <- mouse_hist_id + mouse_hist_cond + del_hist_clus
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mouse_hists.png", mouse_hists, width = 8, height = 6, units = "in")
+
+```
+
+```{r sol_genes}
+
+mouse_cellmarkers <- list(endothelial = c("Cldn5", "Mcam"),
+  red_blood_cells = c("Hemgn"),
+  pericytes = c("Pdgfrb", "Rgs5", "Cspg4", "Des"),
+vascular_fibroblasts = c("Col1a1", "Col1a2", "Dcn", "Lum"),
+  cajal_retzius = c("Reln", "Lhx5", "Dbx1", "Ebf3", "Lhx1", "Wnt3a", "Trp73", "Calb2", "Ebf2"),
+  astrocytes = c("Apoe", "Aldh1l1", "Glul", "Aqp4", "Gfap", "Fgfr3"),
+  opc = c("Pdgfra", "Cspg4", "Olig1", "Olig2"),
+oligodendrocytes = c("Mbp", "Mog", "Plp1", "Mag", "Cnp"),
+  microglia = c("Aif1", "Tmem119", "Tyrobp", "P2ry12", "Cx3cr1", "Hexb"),
+  neurons = c("Snap25", "Rbfox3", "Tubb3"),
+immature_neurons = c("Dcx", "Neurod1", "Neurod2"),
+  glut_neurons_pallial = c("Slc17a6", "Emx1", "Tbr1"),
+  gaba_neurons_subpallial = c("Gad1", "Gad2"),
+  ipc_exc = c("Eomes", "Neurog2", "Btg2"),   
+  ipc_inh = c("Ascl1", "Gsx2", "Dlx1", "Dlx2"),
+  gaba_neurons_subpallial_rostral_like = c("Gsx2", "Isl1", "Ebf1"),
+  gaba_neurons_subpallial_caudal_like = c("Nkx2-1", "Lhx6", "Nkx2-1", "Lhx6", "Lhx8", "Maf", "Sst"),
+  nec_rdg = c("Pax6", "Sox2", "Vim"),
+  rdg = c("Nes", "Ccnd1", "Ptn", "Hmga2", "Hes1", "Hes5", "Fabp7", "Slc1a3"),
+  mcc_markers = c(
+  "Foxj1", "Mcidas", "Trp73", "Cdc20b", "Ccno", 
+  "Deup1", "Dynlrb2", "Cfap52", "Cfap65", "Spef2", 
+  "Ttc21a", "Myb", "Plvap", "Clic6")
+  )
+
+```
+
+```{r}
+
+for (x in names(mouse_cellmarkers)) {
+  mouse_merge <- AddModuleScore(
+    mouse_merge,
+    features = mouse_cellmarkers[x],
+    name = x
+  )
+}
+
+mouse_feat_origcol <- FeaturePlot(mouse_merge, 
+                            features = paste0(names(mouse_cellmarkers),"1"), ncol = 3, 
+                            reduction = "umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, raster = FALSE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/mouse_feat_origcol.png"), mouse_feat_origcol, height = 24, width = 18, units = "in")
+
+
+
+mouse_type_long <- mouse_merge@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    RNA_snn_res.0.8, 
+    paste0(names(mouse_cellmarkers),"1"),
+    paste0(names(mouse_cellmarkers),"1")
+    ) |>
+  tidyr::pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              RNA_snn_res.0.8), names_to = "cell_type"
+    )
+  
+violin_mouse <- mouse_type_long |>
+  dplyr::filter(cell_type %in% c(paste0(names(mouse_cellmarkers), "1"))) |>
+  dplyr::group_by(cell_type, RNA_snn_res.0.8) |>
+  dplyr::filter(mean(value, na.rm = TRUE) > 0 & median(value, na.rm = TRUE) > 0) |>
+  dplyr::ungroup() |>
+  ggplot(aes(x = RNA_snn_res.0.8, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type), scales = "free")
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/violin_mouse.png"), violin_mouse, height = 15, width = 20, units = "in")
+```
+
+```{r annotate_mouse}
+celltype <- c(
+  "1"= "RGC",
+  "2"= "NEC-like RGC",
+  "3"= "RGC",
+  "4"= "Neurons_GABA_subpallial_caudal",
+  "5"= "Neurons_GABA_subpallial_rostral",
+  "6"= "Neurons_Glut_pallial",
+  "7"= "IPC_GABA",
+  "8"= "RGC",
+  "9"= "NEC-like RGC",
+  "10"= "Neurons_GABA_subpallial",
+  "11"= "NEC-like RGC",
+  "12"= "IPC_GABA",
+  "13"= "NEC-like RGC",
+  "14"= "Neurons?",
+  "15"= "IPC_GABA",
+  "16"= "Neurons_Glut_pallial",
+  "17"= "IPC_Glut",
+  "18"= "RGC?",
+  "19"= "Neurons_Glut_pallial?",
+  "20"= "Neurons_GABA_subpallial",
+  "21"= "NEC-like RGC",
+  "22"= "Immature_neurons",
+  "23" = "Neurons_GABA_subpallial",
+  "24" = "Neurons_Glut_pallial",
+  "25" = "NEC-like RGC",
+  "26" = "Vascular"
+)
+
+Idents(mouse_merge) <- "RNA_snn_res.0.8"
+
+mouse_merge@meta.data["celltype"]  <- celltype[as.character(Idents(mouse_merge))]
+
+celltype_plot_mouse <- DimPlot(mouse_merge,
+        reduction = "umap",
+        group.by = "celltype",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .1,
+        shuffle = TRUE,
+        alpha = .5
+        ) + ggtitle("Mouse cell type")
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/celltype_plot_mouse.png"), celltype_plot_mouse, height = 7, width = 12, units = "in")
+
+qs_save(mouse_merge, file = "/home/sofia/Projects/etmr/defaria/mouse/data/mouse_merge.qs2", nthreads = 6)
+```
+
+## Integrate WT and KO separately
+
+```{r cellmarkers_again}
+cellmarkers <- list(endothelial = c("CLDN5", "MCAM"),
+  pericytes = c("PDGFRB", "RGS5", "CSPG4", "DES"),
+  vascular_fibroblasts = c("COL1A1", "COL1A2", "DCN", "LUM"),
+  cajal_retzius = c(
+  "RELN", "LHX5", "DBX1", "EBF3", "LHX1",
+  "WNT3A", "TP73", "CALB2", "EBF2"
+),
+  astrocytes = c(
+  "APOE", "ALDH1L1", "GLUL", "AQP4",
+  "GFAP", "FGFR3"
+),
+  opc = c("PDGFRA", "CSPG4", "OLIG1", "OLIG2"),
+  oligodendrocytes = c(
+  "MBP", "MOG", "PLP1", "CNP"
+),
+  microglia = c(
+  "AIF1", "TMEM119", "TYROBP",
+  "P2RY12", "CX3CR1", "HEXB"
+),
+  neurons = c("SNAP25", "RBFOX3"),
+  immature_neurons = c("DCX", "NEUROD1", "NEUROD2"),
+  glut_neurons_pallial = c("SLC17A6", "EMX1", "TBR1"),
+  gaba_neurons_subpallial = c("GAD1", "GAD2"),
+  ipc_exc = c("NEUROG2", "BTG2"),
+  ipc_inh = c("ASCL1", "GSX2", "DLX1", "DLX2"),
+  gaba_neurons_subpallial_rostral_like = c(
+  "GSX2", "ISL1", "EBF1"
+),
+  gaba_neurons_subpallial_caudal_like = c(
+  "LHX6", "NKX2-1", "LHX8", "MAF", "SST"
+),
+  nec_rdg = c("PAX6", "SOX2", "VIM"),
+  rdg = c(
+  "NES", "CCND1", "PTN", "HMGA2",
+  "HES1", "HES5", "FABP7", "SLC1A3"
+),
+mcc_markers = c(
+  "FOXJ1", "MCIDAS", "TP73", "CDC20B", "CCNO",
+  "DEUP1", "DYNLRB2", "CFAP52", "SPEF2",
+  "TTC21A", "MYB", "PLVAP", "CLIC6"
+),
+Tcell = c("CD2", "CD3E", "PTPRC"),
+S_genes = cc.genes$s.genes,
+G2M = cc.genes$g2m.genes
+  )
+
+```
+
+### Cell type markers
+
+```{r}
+cellmarkers <- list(
+    "Astrocytes" = c("GFAP", "ALDH1L1", "S100B", "SLC1A2", "ACSL6", "AGT"),
+    "Oligodendrocytes" = c("MBP", "MOG", "CLDN14", "NIPAL4", "PLP1", "ERMN", "CLDN14", "KLK6", "EML1"),
+    "Oligodendrocyte progenitors" = c("PDGFRA", "ALDOC", "OLIG1", "EPN2", "NEU4", "NKX6-2", "SOX10", "FYN"),
+    "Microglia" = c("RGS10", "DLEU7", "CD40", "CD68", "ITGAM", "CX3CR1", "TMEM119"),
+    "PC" = c("COL1A2", "PDGFRB", "ANXA2", "RGS5", "ACTA2"),
+    "EC" = c("CLDN5", "CD31"),
+    "Neuroblasts" = c("DCX", "NEUROG1", "NCAM1", "NEUROD1"),
+    "Neurons (general)" = c("DISP2", "PRPH", "CNTNAP2", "RBFOX3", "NEFM", "NRGN", "SGIP1", "ENO2"),
+    "GABA" = c("GAD1", "GAD2", "SLC6A1", "SLC32A1", "DLX1", "GABBR2", "GADD45B", "PAX2"),
+    "Glutamatergic" = c("SLC17A6", "SLC17A7", "SLC17A8"),
+    "Cycling" = c("TOP2A", "MKI67", "AURKA"),
+    "IPC" = c("EOMES", "HES6", "NEUROD4"),
+    "RDG" = c("PAX6", "SLC1A3", "PDGFD", "GLI3", "NOTCH3", "VCAM1", "HES5", "CDH4", "SPRY1", "AXIN2", "SOX2", "VIM", "NES"),
+  "T-cell" = c("CD2", "CD3E", "CD52", "PTPRC"),
+    "ETMR" = c("ABCB5", "ACRV1", "ACVR2A", "ACVR2B", "ADAM7", "AGO1", "AGPS", "APELA", "BLTP3A", "C16orf82", "C22orf42", "CALHM4", "CBX2", "CCDC150", "CCNE1", "CCNJ", "CCNT2", "CDC25A", "CDC7", "CHAC2", "CHRNA5", "CHRNB4", "CRABP1", "CRYGC", "CSAG2", "CSAG3", "CTCFL", "CTPS1", "CXXC4", "CYP27C1", "DAAM1", "DEPDC1B", "DIS3L2", "DNA2", "DNMT3B", "DTX4", "EPB41", "EVX2", "EXOSC7", "FAM161A", "FANCD2OS", "FIGNL2", "FOXB1", "GABRR1", "GATA3", "GBX1", "GJC1", "GPR20", "GREB1", "GREB1L", "H1-2", "H2BC11", "H2BC26", "H2BC9", "H3C15", "HCRTR2", "HELLS", "HES5", "HIC2", "HMX2", "HOXA1", "HOXA3", "HOXB1", "HRC", "IDH1", "IGF2BP1", "INSM2", "KCNH8", "KLHL23", "KPNA2", "LBX1", "LCOR", "LIN28A", "LIN28B", "MAGEA10", "MAGEA12", "MAGEA2B", "MAGEA3", "MAGEA6", "MBTD1", "MEIS1", "MSH2", "MTF2", "MTTP", "NDST4", "NEUROG3", "NHEJ1", "NKX1-1", "NKX1-2", "NKX6-3", "NPPC", "NR6A1", "NSD2", "NUP210", "NUP62CL", "ONECUT1", "ORC1", "OTP", "P2RX3", "PAPOLG", "PBX2", "PDE7A", "PGAP1", "PHF6", "PHOX2B", "PIK3C2B", "PLEKHA8", "PMFBP1", "POLQ", "POTEE", "POTEF", "POTEI", "PRDM12", "PRDM13", "PRDM5", "PRIM1", "PRTG", "PTBP2", "RAD54L2", "RALGPS2", "RARB", "RASAL2", "RNF152", "RPS6KA6", "RRM2", "RTKN2", "SALL4", "SANBR", "SCML2", "SCML4", "SCN11A", "SCUBE3", "SEMG2", "SERTM2", "SESTD1", "SFRP2", "SHISA3", "SINHCAF", "SMARCC1", "SOX11", "SOX14", "SOX3", "SP8", "SPSB4", "SRPK1", "STK26", "STRBP", "SUV39H2", "TIA1", "TMC4", "TRIM71", "TSGA10IP", "ULBP3", "USP44", "VSX2", "WNT7A", "ZBTB39", "ZFHX3", "ZNF439", "ZNF462", "ZNF48", "ZNF608", "ZNF620", "ZNF71"),
+
+"NEC (Sol)" = c("MDK",
+         "MIF",
+         "AC090498.1",
+         "PSMA4",
+         "SMS",
+         "HSPA5",
+         "RANBP1",
+         "TPM1",
+         "IGFBP2",
+         "PFN1",
+         "OSTC",
+         "HMGA1",
+         "LAPTM4A",
+         "MYL12A",
+         "PDIA6",
+         "PRELID1",
+         "ARF4",
+         "OCIAD2",
+         "MAD2L1",
+         "PDIA3",
+         "KPNA2",
+         "AKR1B1",
+         "EIF4E",
+         "TMED9",
+         "MRPL42"),
+
+"NEC2" = c(
+  "ID3",
+  "PRTG",
+  "WNT8B"
+)
+)
+
+cellmarkers <- list(
+
+  # Tumor stem / radial glia-like
+  RDG = c(
+    "PAX6","SOX2","VIM","NES",
+    "HES1","HES5","FABP7","SLC1A3",
+    "PTN","HMGA2"
+  ),
+
+  # Neuroepithelial progenitor
+  NEC = c(
+    "MDK",
+         "MIF",
+         "PSMA4",
+         "SMS",
+         "HSPA5",
+         "RANBP1",
+         "TPM1",
+         "IGFBP2",
+         "PFN1",
+         "OSTC",
+         "HMGA1",
+         "LAPTM4A",
+         "MYL12A",
+         "PDIA6",
+         "PRELID1",
+         "ARF4",
+         "OCIAD2",
+         "MAD2L1",
+         "PDIA3",
+         "KPNA2",
+         "AKR1B1",
+         "EIF4E",
+         "TMED9",
+         "MRPL42"
+  ),
+
+  # IPC
+  IPC= c(
+    "EOMES", "HES6", "NEUROD4"
+  ),
+
+  # Immature neurons
+  Neuroblasts = c(
+    "DCX","NCAM1",
+    "NEUROD1","NEUROD2",
+    "STMN2","TUBB3"
+  ),
+
+  # Excitatory neurons
+  Glut = c(
+    "SLC17A6", "SLC17A7", "SLC17A8"
+  ),
+
+  # Inhibitory neurons
+  GABA = c(
+    "GAD1","GAD2","DLX1","DLX2"
+  ),
+
+  # Mature neurons
+  Neurons = c(
+    "RBFOX3","SNAP25",
+    "SYT1","ELAVL4","NEFM", "MAP2", "GRIN1"
+  ),
+
+  # Astrocytes
+  Astrocytes = c(
+    "ALDH1L1","AQP4",
+    "GFAP","GLUL","SLC1A2"
+  ),
+
+  # OPC
+  OPC = c(
+    "PDGFRA","CSPG4",
+    "OLIG1","OLIG2","SOX10"
+  ),
+
+  # Oligodendrocytes
+  Oligodendrocytes = c(
+    "MBP","MOG","PLP1",
+    "CNP","MOBP"
+  ),
+
+  # Microglia
+  Microglia = c(
+    "AIF1","TMEM119",
+    "P2RY12","CX3CR1",
+    "TYROBP","HEXB"
+  ),
+
+  # Endothelial
+  Endothelial = c(
+    "CLDN5","FLT1",
+    "KDR","EMCN","PECAM1"
+  ),
+
+  # Pericytes
+  Pericytes = c(
+    "PDGFRB","RGS5",
+    "CSPG4","DES","MCAM"
+  ),
+
+  # Fibroblasts
+  Fibroblasts = c(
+    "COL1A1","COL1A2",
+    "DCN","LUM"
+  ),
+
+  # T cells
+  Tcell = c(
+    "CD2","CD3D",
+    "CD3E","PTPRC"
+  ),
+
+  # Cell cycle
+  Cycling = c(
+    "MKI67","TOP2A",
+    "AURKA","UBE2C"
+  )
+)
+
+cellmarkers_table <- unnest(enframe(cellmarkers), cols = c(value)) |>
+  dplyr::rename(Celltype = name, Gene = value)
+
+write.csv(cellmarkers_table, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/cellmarkers_table.csv")
+
+```
+
+#### WT
+
+```{r wt}
+wt_mouse <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/wt_ortho_prep.qs2", nthreads = 6)
+
+snrna.data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/human_prep.qs2", nthreads = 6)
+
+wt_mouse@meta.data["condition"] <- "mouse_WT" 
+snrna.data@meta.data["condition"] <- "human_tumor"
+
+#Find genes in common
+human_genes <- Features(snrna.data)
+mouse_genes <- Features(wt_mouse)
+
+genes_in_common <- intersect(human_genes, mouse_genes)
+
+
+#Filter genes in common
+tumor_to_merge <- subset(snrna.data, features = genes_in_common)
+wt_to_merge    <- subset(wt_mouse, features = genes_in_common)
+
+tumor_to_merge[["RNA"]] <- split(tumor_to_merge[["RNA"]], f = tumor_to_merge$orig.ident)
+wt_to_merge[["RNA"]] <- split(wt_to_merge[["RNA"]], f = wt_to_merge$orig.ident)
+
+#Merge datasets
+merged_data <- merge(x = tumor_to_merge, y = wt_to_merge, add.cell.ids = c("human", "wt"))
+
+merged_data <- subset(merged_data, subset = DF.classification == "Singlet")
+
+gc()
+
+#Normalize and Scale
+merged_data <- NormalizeData(merged_data)
+merged_data <- FindVariableFeatures(merged_data)
+merged_data <- ScaleData(merged_data, features = VariableFeatures(merged_data))
+
+gc()
+#PCA
+merged_data <- RunPCA(merged_data)
+
+#Integrate
+integrated_data <- IntegrateLayers(
+  merged_data,
+  method = SeuratWrappers::FastMNNIntegration
+)
+
+qs_save(integrated_data, "/home/sofia/Projects/etmr/defaria/mouse/data/int_wt_tumor.qs2", nthreads = 6)
+
+gc()
+
+integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/int_wt_tumor.qs2", nthreads = 6)
+
+#Clustering
+integrated_data <- RunUMAP(integrated_data, reduction = "integrated.mnn", dims = 1:30)
+integrated_data <- FindNeighbors(integrated_data, reduction = "integrated.mnn", dims = 1:30)
+integrated_data <- FindClusters(integrated_data, resolution = 1.8, algorithm = 4, random.seed = 2026)
+
+
+#Plotting
+plots_wt_human <- (DimPlot(integrated_data, reduction = "umap", group.by = c("condition"), raster = FALSE) + ggtitle("Sample Type")) + (DimPlot(integrated_data, reduction = "umap", group.by = c("RNA_snn_res.1.8"), raster = FALSE, label = TRUE) + ggtitle("Cluster Leiden res 1.8")) + (DimPlot(integrated_data, reduction = "umap", group.by = c("orig.ident"), raster = FALSE) + ggtitle("Sample ID"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/wt_human_sing.png", plots_wt_human, width = 21, height = 7, units = "in")
+
+
+#Warning: The following features are not present in the object: APELA, BLTP3A, C16orf82, C22orf42, CSAG2, CSAG3, CTPS1, CYP27C1, H1-2, H2BC11, H2BC26, H2BC9, H3C15, HOXA1, HOXA3, HOXB1, LBX1, MAGEA12, MAGEA2B, MAGEA3, MAGEA6, POTEE, POTEF, POTEI, PRDM12, RPS6KA6, SANBR, SEMG2, SERTM2, SOX11, ULBP3, ZNF439, ZNF620, ZNF71, not searching for symbol synonyms
+# Warning: The following features are not present in the object: TUBB3, not searching for symbol synonyms
+# Warning: The following features are not present in the object: NEFM, not searching for symbol synonyms
+# Warning: The following features are not present in the object: UBE2C, not searching for symbol synonyms
+
+
+#Annotation
+
+for (x in names(cellmarkers)) {
+  integrated_data <- AddModuleScore(
+    integrated_data,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+wt_tumor_feat <- FeaturePlot(integrated_data, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, raster = FALSE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/Annotation/wt_tumor_feat_sing.png"), wt_tumor_feat, height = 24, width = 24, units = "in")
+
+
+wt_tumor_long <- integrated_data@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    RNA_snn_res.1.8,
+    condition,
+    paste0(names(cellmarkers),"1")
+    ) |>
+  tidyr::pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              RNA_snn_res.1.8,
+              condition), names_to = "cell_type"
+    )
+  
+violin_wt_tumor <- wt_tumor_long |>
+  dplyr::filter(cell_type %in% c(paste0(names(cellmarkers), "1"))) |>
+  dplyr::group_by(cell_type, RNA_snn_res.1.8) |>
+  dplyr::filter(mean(value, na.rm = TRUE) > 0 & median(value, na.rm = TRUE) > 0) |>
+  dplyr::ungroup() |>
+  ggplot(aes(x = RNA_snn_res.1.8, y = value, fill = condition)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type), scales = "free")
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/Annotation/violin_wt_tumor_sing.png"), violin_wt_tumor, height = 15, width = 24, units = "in")
+
+gc()
+
+
+celltype_colors <- c("Neurons_Glut" = "#9381ff", "IPC_Glut" = "#b8b8ff",
+"Neurons_GABA" = "#ff97c4", "IPC_GABA" = "#ffc8c4",
+"Neurons" = "#ff70a6",
+"Neurons_immature" = "#ff9770",
+"IPC" = "#ffd670",
+"RGC_NEC-like" = "#2fbf71", "RGC" = "#8cd867", 
+"PC/EC" = "#61f2c2",
+"Astrocytes" = "#72ddf7",
+"Microglia" = "#b8d0ec", 
+"Oligodendrocytes" = "#d2d2cf", 
+"Lymphocytes" = "#118ab2")
+
+wt_tumor_long |>
+  dplyr::filter(cell_type %in% c(paste0(names(cellmarkers), "1"))) |>
+  dplyr::group_by(cell_type, RNA_snn_res.1.8) |>
+  dplyr::filter(mean(value, na.rm = TRUE) > 0 & median(value, na.rm = TRUE) > 0) |>
+  dplyr::ungroup() |>
+  ggplot(aes(x = RNA_snn_res.1.8, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type), scales = "free")
+
+celltype <- c(
+  "1" = "RGC",
+  "2" = "Neurons",
+  "3" = "Neurons_GABA",
+  "4" = "RGC_NEC-like",
+  "5" = "RGC",
+  "6" = "RGC_NEC-like",
+  "7" = "RGC_NEC-like",
+  "8" = "Neurons_immature",
+  "9" = "Neurons",
+  "10" = "RGC",
+  "11" = "Neurons_immature",
+  "12" = "RGC_NEC-like",
+  "13" = "RGC",
+  "14" = "Neurons_GABA",
+  "15" = "Neurons_immature",
+  "16" = "RGC_NEC-like",
+  "17" = "RGC_NEC-like",
+  "18" = "Neurons_Glut",
+  "19" = "RGC",
+  "20" = "RGC_NEC-like",
+  "21" = "Neurons_GABA",
+  "22" = "Astrocytes",
+  "23" = "IPC",
+  "24" = "Neurons_GABA",
+  "25" = "Neurons_immature",
+  "26" = "Neurons_immature",
+  "27" = "RGC",
+  "28" = "Microglia",
+  "29" = "PC/EC",
+  "30" = "IPC_GABA",
+  "31" = "Lymphocytes",
+  "32" = "IPC_Glut",
+  "33" = "IPC",
+  "34" = "Neurons_GABA",
+  "35" = "Neurons_GABA",
+  "36" = "Oligodendrocytes"
+  )
+
+Idents(integrated_data) <- "RNA_snn_res.1.8"
+
+celltype_order <- c("RGC_NEC-like", "RGC", "IPC", "IPC_Glut", "IPC_GABA","Neurons_immature", "Neurons", "Neurons_GABA", "Neurons_Glut", "PC/EC", "Astrocytes", "Microglia", "Oligodendrocytes", "Lymphocytes")
+
+
+integrated_data@meta.data["celltype"]  <- factor(integrated_data@meta.data$celltype, levels = celltype_order)
+
+celltype_plot_wt <- DimPlot(integrated_data,
+        reduction = "umap",
+        group.by = "celltype",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .1,
+        shuffle = TRUE,
+        alpha = .5,
+        repel = TRUE,
+        cols = celltype_colors
+        ) + ggtitle("WT-ETMR cell type") 
+        
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/Annotation/celltype_plot_wt_sing.png"), celltype_plot_wt, height = 6, width = 8, units = "in")
+
+
+by_cluster_wt <- integrated_data@meta.data |>
+  dplyr::count(celltype, RNA_snn_res.1.8, condition) |>
+  dplyr::group_by(celltype, RNA_snn_res.1.8) |>
+  dplyr::mutate(
+    percentage_per_cluster = round(n / sum(n) * 100, 2)
+  ) |>
+  dplyr::ungroup()
+
+write.csv(by_cluster_wt, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/by_cluster_wt_sing.csv")
+
+by_celltype_wt <- integrated_data@meta.data |>
+  dplyr::count(celltype, condition) |>
+  dplyr::group_by(celltype) |>
+  dplyr::mutate(
+    percentage_per_cluster = round(n / sum(n) * 100, 2)
+  ) |>
+  dplyr::ungroup()
+
+write.csv(by_celltype_wt, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/by_celltype_wt_sing.csv")
+
+expected_wt <- integrated_data@meta.data |>
+  dplyr::count(condition) |>
+  dplyr::mutate(
+    expected = round(n / sum(n) * 100, 2)
+  )
+
+write.csv(expected_wt, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/expected_wt_sing.csv")
+  
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+mnn_umapdf <- integrated_data@meta.data |>
+  dplyr::select(orig.ident, RNA_snn_res.1.8, condition, celltype) |>
+  mutate(Tumor = ifelse(condition == "human_tumor", TRUE, FALSE)) |>
+  rownames_to_column("cell")
+
+mnn_hist_id <- plot_hist(mnn_umapdf, "RNA_snn_res.1.8", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/Histograms/wt_tumor_id_sing.png", mnn_hist_id, width = 8, height = 7, units = "in")
+
+mnn_hist_tumor <- plot_hist_oneval(mnn_umapdf, "RNA_snn_res.1.8", "Tumor", "#84a98c") + labs(title = "Percentage of human tumor vs WT mice cells by cluster (res 1.8)")  +
+  geom_hline(yintercept = .25, color = "darkgreen") +
+  geom_hline(yintercept = .75, color = "darkgreen")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/Histograms/wt_tumor_cond_sing.png", mnn_hist_tumor, width = 8, height = 7, units = "in")
+
+mnn_hist_celltype <- plot_hist_oneval(mnn_umapdf, "celltype", "Tumor", "#84a98c") + labs(title = "Percentage of human tumor vs WT mice cells  by celltype")  + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  geom_hline(yintercept = .25, color = "darkgreen") +
+  geom_hline(yintercept = .75, color = "darkgreen")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/Histograms/wt_tumor_celltype_sing.png", mnn_hist_celltype, width = 8, height = 7, units = "in")
+
+sel_wt_clusters <- (DimPlot(subset(integrated_data, subset = RNA_snn_res.1.8 %in% c(2, 4, 10, 25, 33)), reduction = "umap", group.by = c("condition", "celltype"), raster = FALSE, label = TRUE, split.by = "RNA_snn_res.1.8", label.size = 5, repel = TRUE) + scale_color_discrete(palette  ="Set2")) & NoLegend() 
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/sel_wt_clusters.png", sel_wt_clusters, width = 16, height = 12, units = "in")
+
+qs_save(integrated_data, file = "/home/sofia/Projects/etmr/defaria/mouse/data/int_wt_tumor_sing.qs2", nthreads = 6)
+```
+
+```{r wt_deg}
+# Cluster markers
+integrated_data <- JoinLayers(integrated_data)
+
+gc()
+
+Idents(integrated_data) <- "RNA_snn_res.1.8"
+
+wt_etmr_markers <- FindAllMarkers(integrated_data)
+
+gc()
+
+View(wt_etmr_markers)
+
+mark_loading_table <- wt_etmr_markers |>
+  dplyr::rename(Gene = gene) |>
+  inner_join(cellmarkers_table, relationship = "many-to-many") |>
+  group_by(cluster) |>
+  dplyr::arrange(avg_log2FC) |>
+  dplyr::ungroup()
+
+View(mark_loading_table)
+
+write.csv(mark_loading_table, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/wt_mark_deg_table_sing.csv")
+
+qs_save(integrated_data, file = "/home/sofia/Projects/etmr/defaria/mouse/data/int_wt_tumor_sing.qs2", nthreads = 6)
+
+```
+
+##### Trajectory
+
+```{r wt_trajectory, warning=FALSE}
+
+integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/int_wt_tumor_sing.qs2", nthreads = 6)
+
+
+integrated_data <- RunUMAP(integrated_data, reduction = "integrated.mnn", dims = 1:30, n.components = 3, seed.use = 42, reduction.name = "umap3")
+
+
+cds <- as.cell_data_set(integrated_data)
+
+reducedDims(cds)$UMAP <- Embeddings(integrated_data, "umap3")
+
+colData(cds)$cluster <- integrated_data$RNA_snn_res.1.8
+
+colData(cds)$celltype.1.8 <- integrated_data$celltype #check that this matches everywhere
+gc()
+
+# Build Monocle's internal graph/partitions
+
+cds@clusters$UMAP$partitions <- setNames(as.factor(rep(1, length(cds@colData@rownames))), cds@colData@rownames)
+
+cds <- learn_graph(cds, use_partition = FALSE)
+
+gc()
+
+qs_save(cds, "/home/sofia/Projects/etmr/defaria/mouse/data/int_wt_tumor_sing_tr.qs2", nthreads = 6)
+
+cds <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/int_wt_tumor_sing_tr.qs2", nthreads = 6)
+
+wt_traj_clus_umap <- plot_cells_3d(cds)
+
+saveWidget(wt_traj_clus_umap, "/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/wt_traj_clus_umap_3d.html", selfcontained = TRUE)
+
+
+#Order in pseudotime
+
+origin_cells <- rownames(colData(cds))[colData(cds)$celltype.1.8=="RGC_NEC-like"]
+
+cds <- order_cells(cds, root_cells = origin_cells)
+
+gc()
+
+cds$pseudotime <- pseudotime(cds)
+
+source("~/Projects/etmr/defaria/scripts/functions.R")  
+
+wt_pseudo_umap <- plot_cells_3d(cds, color_cells_by = "pseudotime", alpha = .4)
+
+saveWidget(wt_pseudo_umap, "/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/wt_pseudo_umap_3d.html", selfcontained = TRUE)
+
+
+colData(cds)$celltype <- factor(gsub("_GABA|_Glut", "", colData(cds)$celltype.1.8), levels = c("RGC_NEC-like", "RGC", "IPC", "Neurons_immature", "Neurons", "PC/EC", "Microglia", "Lymphocytes", "Oligodendrocytes", "Astrocytes"))
+
+celltype_colors <- c("Neurons_Glut" = "#9381ff", "IPC_Glut" = "#b8b8ff",
+"Neurons_GABA" = "#ff97c4", "IPC_GABA" = "#ffc8c4",
+"Neurons" = "#ff70a6",
+"Neurons_immature" = "#ff9770",
+"IPC" = "#ffd670",
+"RGC_NEC-like" = "#2fbf71", "RGC" = "#8cd867", 
+"PC/EC" = "#61f2c2",
+"Astrocytes" = "#72ddf7",
+"Microglia" = "#b8d0ec", 
+"Oligodendrocytes" = "#d2d2cf", 
+"Lymphocytes" = "#118ab2")
+
+
+wt_celltype_umap <- plot_cells_3d_fixed(cds, color_cells_by = "celltype", color_palette = celltype_colors)
+
+saveWidget(wt_celltype_umap, "/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/wt_celltype_umap_3d.html", selfcontained = TRUE)
+
+
+#range of pseudotime per cell
+
+
+weird_order <- celltype_colors
+
+data.pseudo.wt <- as.data.frame(colData(cds)) 
+
+pseudo_celltype_wt <- data.pseudo.wt |>
+  ggplot(aes(pseudotime, reorder(celltype, pseudotime, median), fill = celltype))  +
+  geom_boxplot() +
+  scale_fill_manual(values = weird_order)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/pseudo_celltype_wt.png", pseudo_celltype_wt, height = 12, width = 8, units = "in")
+
+pseudo_cluster_wt <- data.pseudo.wt |>
+  ggplot(aes(pseudotime, reorder(cluster, pseudotime, median), fill = celltype))  +
+  geom_boxplot() +
+  scale_fill_manual(values = weird_order) +
+  ggtitle("Pseudotime by cluster 12-sp-WT-human integration")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/pseudo_cluster_wt.png", pseudo_cluster_wt, height = 10, width = 18, units = "in")
+
+
+qs_save(cds, "/home/sofia/Projects/etmr/defaria/mouse/data/int_wt_tumor_sing_tr.qs2", nthreads = 6)
+
+```
+
+```{r}
+#PC STUFF  
+# 
+# source("~/Projects/etmr/defaria/scripts/functions.R")
+# 
+# pc_table <- get_pc_terms(loadings, dims = 1:30, nfeatures = 20)
+# 
+# gt_pc <- pc_table |>
+#   gt() |>
+#   tab_header(
+#     title = "PCA Loadings for WT vs human tumors (Positive vs Negative Genes)",
+#     subtitle = "Top 20 genes per direction for PC1–PC30"
+#   ) |>
+#   cols_label(
+#     PC = "Principal Component",
+#     positive = "Positive Loadings",
+#     negative = "Negative Loadings"
+#   ) |>
+#   opt_row_striping()
+# 
+# 
+# gtsave(gt_pc, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/wt_pc_content.html")
+# 
+# #PC loadings
+# 
+# loadings <- Seurat::Loadings(integrated_data[["pca"]])
+# 
+# loadings_df <- as.data.frame(loadings[, 1:30])
+# 
+# loadings_long <- loadings_df |>
+#   rownames_to_column("gene") |>
+#   pivot_longer(-gene, names_to = "PC", values_to = "loading")
+# 
+# top_loadings <- loadings_long |>
+#   group_by(PC) |>
+#   dplyr::arrange(desc(loading), .by_group = TRUE) |>
+#   dplyr::filter(loading %in% head(loading, n = 20) |loading %in% tail(loading, n = 20)) |>
+#   ungroup() 
+# 
+# 
+# pc_loading_table <- top_loadings |>
+#   rename(Gene = gene) |>
+#   inner_join(cellmarkers_table, relationship = "many-to-many") |>
+#   dplyr::mutate(PC = as.numeric(gsub("PC_", "", PC))) |>
+#   dplyr::arrange(PC)
+# 
+# write.csv(pc_loading_table, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/wt_pc_loading_table.csv")
+# 
+# gene_program_wt <- pc_loading_table |>
+#   dplyr::filter(loading > 0)
+# 
+# write.csv(gene_program_wt, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/wt_gene_program.csv")
+# 
+# gene_program_neg_wt <- pc_loading_table |>
+#   dplyr::filter(loading < 0)
+# 
+# write.csv(gene_program_neg_wt, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/gene_program_neg_wt.csv")
+
+# See PC per cluster
+# wt_pc_feat_plot1 <- FeaturePlot(integrated_data, features = paste0("PC_", 1:15), order = TRUE)  & scale_color_gradient2(
+#   low = "blue",     # negative values
+#   mid = "lightyellow",     # zero
+#   high = "red",     # positive values
+#   midpoint = 0
+# ) 
+# 
+# ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/Annotation/wt_pc_feat_plot1.png"), wt_pc_feat_plot1, height = 15, width = 20, units = "in")
+# 
+# wt_pc_feat_plot2 <- FeaturePlot(integrated_data, features = paste0("PC_", 16:30), order = TRUE)  & scale_color_gradient2(
+#   low = "blue",     # negative values
+#   mid = "lightyellow",     # zero
+#   high = "red",     # positive values
+#   midpoint = 0
+# ) 
+# 
+# ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/Annotation/wt_pc_feat_plot2.png"), wt_pc_feat_plot2, height = 15, width = 20, units = "in")
+
+
+```
+
+#### KO
+
+```{r ko}
+ko_mouse <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/ko_ortho_prep.qs2", nthreads = 6)
+
+ko_mouse@meta.data["condition"] <- "mouse_KO" 
+
+ko_mouse@meta.data$orig.ident <- ko_mouse@meta.data$sample_origin
+
+snrna.data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/human_prep.qs2", nthreads = 6)
+
+ko_mouse@meta.data["condition"] <- "mouse_KO" 
+snrna.data@meta.data["condition"] <- "human_tumor"
+
+#Find genes in common
+human_genes <- Features(snrna.data)
+mouse_genes <- Features(ko_mouse)
+
+genes_in_common <- intersect(human_genes, mouse_genes)
+
+
+#Filter genes in common
+tumor_to_merge <- subset(snrna.data, features = genes_in_common)
+ko_to_merge    <- subset(ko_mouse, features = genes_in_common)
+
+tumor_to_merge[["RNA"]] <- split(tumor_to_merge[["RNA"]], f = tumor_to_merge$orig.ident)
+ko_to_merge[["RNA"]] <- split(ko_to_merge[["RNA"]], f = ko_to_merge$orig.ident)
+
+#Merge datasets
+merged_data <- merge(x = tumor_to_merge, y = ko_to_merge, add.cell.ids = c("human", "ko"))
+
+merged_data <- subset(merged_data, subset = DF.classification == "Singlet")
+
+gc()
+
+merged_data <- NormalizeData(merged_data)
+merged_data <- FindVariableFeatures(merged_data)
+merged_data <- ScaleData(merged_data, features = VariableFeatures(merged_data))
+
+gc()
+#PCA
+merged_data <- RunPCA(merged_data)
+
+#Integrate
+integrated_data <- IntegrateLayers(
+  merged_data,
+  method = FastMNNIntegration
+)
+
+qs_save(integrated_data, "/home/sofia/Projects/etmr/defaria/mouse/data/int_ko_tumor_sing.qs2", nthreads = 6)
+
+gc()
+
+integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/int_ko_tumor_sing.qs2", nthreads = 6)
+
+#Clustering
+integrated_data <- RunUMAP(integrated_data, reduction = "integrated.mnn", dims = 1:30)
+integrated_data <- FindNeighbors(integrated_data, reduction = "integrated.mnn", dims = 1:30)
+integrated_data <- FindClusters(integrated_data, resolution = .8, algorithm = 4, random.seed = 2026)
+
+integrated_data <- FindClusters(integrated_data, resolution = 1, algorithm = 4, random.seed = 2026)
+
+integrated_data <- FindClusters(integrated_data, resolution = 1.2, algorithm = 4, random.seed = 2026)
+
+integrated_data <- FindClusters(integrated_data, resolution = 1.5, algorithm = 4, random.seed = 2026)
+
+integrated_data <- FindClusters(integrated_data, resolution = 1.8, algorithm = 4, random.seed = 2026)
+
+#Plotting
+plots_ko_human <- (DimPlot(integrated_data, reduction = "umap", group.by = c("condition"), raster = FALSE) + ggtitle("Sample Type")) + (DimPlot(integrated_data, reduction = "umap", group.by = c("RNA_snn_res.1.8"), raster = FALSE, label = TRUE) + ggtitle("Cluster Leiden res 1.8")) + (DimPlot(integrated_data, reduction = "umap", group.by = c("orig.ident"), raster = FALSE) + ggtitle("Sample ID"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/ko_human_sing.png", plots_ko_human, width = 21, height = 7, units = "in")
+
+dif_res <- (DimPlot(integrated_data, reduction = "umap", group.by = c("RNA_snn_res.0.8"), raster = FALSE, label = TRUE) + ggtitle("Cluster Leiden res .8")) + (DimPlot(integrated_data, reduction = "umap", group.by = c("RNA_snn_res.1"), raster = FALSE, label = TRUE) + ggtitle("Cluster Leiden res 1")) + (DimPlot(integrated_data, reduction = "umap", group.by = c("RNA_snn_res.1.2"), raster = FALSE, label = TRUE) + ggtitle("Cluster Leiden res 1.2")) + (DimPlot(integrated_data, reduction = "umap", group.by = c("RNA_snn_res.1.8"), raster = FALSE, label = TRUE) + ggtitle("Cluster Leiden res 1.8"))
+
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/res_ko_human_sing.png", dif_res, width = 18, height = 16, units = "in")
+
+#Annotation
+
+for (x in names(cellmarkers)) {
+  integrated_data <- AddModuleScore(
+    integrated_data,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+ko_tumor_feat <- FeaturePlot(integrated_data, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, raster = FALSE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/Annotation/ko_tumor_feat_sing.png"), ko_tumor_feat, height = 20, width = 24, units = "in")
+
+
+ko_tumor_long <- integrated_data@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    RNA_snn_res.1.8, 
+    condition,
+    paste0(names(cellmarkers),"1")
+    ) |>
+  tidyr::pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              RNA_snn_res.1.8,
+              condition), names_to = "cell_type"
+    )
+  
+violin_ko_tumor <- ko_tumor_long |>
+  dplyr::filter(cell_type %in% c(paste0(names(cellmarkers), "1"))) |>
+  dplyr::group_by(cell_type, RNA_snn_res.1.8) |>
+  dplyr::filter(mean(value, na.rm = TRUE) > 0 | median(value, na.rm = TRUE) > 0) |>
+  dplyr::ungroup() |>
+  ggplot(aes(x = RNA_snn_res.1.8, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type), scales = "free")
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/Annotation/violin_ko_tumor.png"), violin_ko_tumor, height = 15, width = 20, units = "in")
+
+gc()
+
+celltype_1.8 <- c(
+  "1" = "RGC",
+  "2" = "RGC",
+  "3" = "RGC_NEC-like",
+  "4" = "Neurons", #Maybe immature
+  "5" = "Neurons",
+  "6" = "RGC_NEC-like",
+  "7" = "RGC",
+  "8" = "Neurons",
+  "9" = "Neurons_GABA",
+  "10" = "RGC",
+  "11" = "Neurons_GABA",
+  "12" = "Neurons_immature",
+  "13" = "Neurons_GABA",
+  "14" = "RGC_NEC-like",
+  "15" = "Neurons_GABA",
+  "16" = "RGC",
+  "17" = "RGC_NEC-like",
+  "18" = "Neurons_immature",
+  "19" = "RGC_NEC-like",
+  "20" = "Neurons_Glut",
+  "21" = "IPC_GABA",
+  "22" = "IPC_GABA",
+  "23" = "Astrocytes",
+  "24" = "Neurons_immature", #Maybe neuron
+  "25" = "IPC_Glut", #Maybe more neuron or immature neuron
+  "26" = "IPC",
+  "27" = "RGC",
+  "28" = "Neurons_GABA",
+  "29" = "Lymphocytes",
+  "30" = "Neurons_immature", #Maybe RGC
+  "31" = "Neurons_Glut",
+  "32" = "PC/EC",
+  "33" = "Microglia",
+  "34" = "Neurons_immature",
+  "35" = "IPC",
+  "36" = "RGC_NEC-like",
+  "37" = "Oligodendrocytes"
+)
+
+Idents(integrated_data) <- "RNA_snn_res.1.8"
+
+integrated_data@meta.data["celltype.1.8"]  <- celltype_1.8[as.character(Idents(integrated_data))]
+
+celltype_order <- c("RGC_NEC-like", "RGC", "IPC", "IPC_Glut", "IPC_GABA","Neurons_immature", "Neurons", "Neurons_GABA", "Neurons_Glut", "PC/EC", "Astrocytes", "Microglia", "Oligodendrocytes", "Lymphocytes")
+
+
+integrated_data@meta.data["celltype.1.8"]  <- factor(integrated_data@meta.data$celltype.1.8, levels = celltype_order)
+
+celltype_colors <- c("Neurons_Glut" = "#9381ff", "IPC_Glut" = "#b8b8ff",
+"Neurons_GABA" = "#ff97c4", "IPC_GABA" = "#ffc8c4",
+"Neurons" = "#ff70a6",
+"Neurons_immature" = "#ff9770",
+"IPC" = "#ffd670",
+"RGC_NEC-like" = "#2fbf71", "RGC" = "#8cd867", 
+"PC/EC" = "#61f2c2",
+"Astrocytes" = "#72ddf7",
+"Microglia" = "#b8d0ec", 
+"Oligodendrocytes" = "#d2d2cf", 
+"Lymphocytes" = "#118ab2")
+
+
+celltype_plot_ko <- DimPlot(integrated_data,
+        reduction = "umap",
+        group.by = "celltype.1.8",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .1,
+        shuffle = TRUE,
+        alpha = .5,
+        label.size = 4,
+        label.box = FALSE,
+        repel = TRUE,
+        cols = celltype_colors
+        ) + ggtitle("KO-ETMR cell type")
+
+
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/Annotation/celltype_plot_ko.png"), celltype_plot_ko, height = 8, width = 10, units = "in")
+
+
+source("~/Projects/etmr/defaria/scripts/functions.R")  
+
+mnn_umapdf <- integrated_data@meta.data |>
+  dplyr::select(orig.ident, RNA_snn_res.1.8, condition, celltype.1.8) |>
+  mutate(Tumor = ifelse(condition == "human_tumor", TRUE, FALSE)) |>
+  rownames_to_column("cell")
+
+mnn_hist_id <- plot_hist(mnn_umapdf, "RNA_snn_res.1.8", "orig.ident") + 
+  labs(title = "Sample ID", fill = "Sample ID") + 
+  labs(title = "Percentage of individual sample cells by cluster (res 1.8)")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/Histograms/ko_tumor_id.png", mnn_hist_id, width = 8, height = 6, units = "in")
+
+mnn_hist_tumor <- plot_hist_oneval(
+  mnn_umapdf, "RNA_snn_res.1.8", "Tumor", "#e2b6cf"
+  ) + 
+  labs(title = "Percentage of human tumor vs Rx-Dicer cells by cluster (res 1.8)") +
+  geom_hline(yintercept = .25, color = "darkmagenta") +
+  geom_hline(yintercept = .75, color = "darkmagenta")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/Histograms/ko_tumor_cond.png", mnn_hist_tumor,  width = 7, height = 7, units = "in")
+
+mnn_hist_celltype <- plot_hist_oneval(mnn_umapdf, "celltype.1.8", "Tumor", "#e2b6cf") + labs(title = "Percentage of human tumor vs Rx-Dicer cells by celltype") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 8)) +
+  geom_hline(yintercept = .25, color = "darkmagenta") +
+  geom_hline(yintercept = .75, color = "darkmagenta")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/Histograms/ko_tumor_celltype.png", mnn_hist_celltype, width = 7, height = 7, units = "in")
+
+
+clus_ko_human <-DimPlot(integrated_data, reduction = "umap", group.by = c("RNA_snn_res.1.8"), raster = FALSE, label = TRUE, repel = FALSE) + ggtitle("Clustering Rx-Dicer and tumors by Leiden res 1.8")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/clus_ko_human.png", clus_ko_human, width = 7, height = 6, units = "in")
+
+cond_ko_human <- (DimPlot(integrated_data, reduction = "umap", group.by = c("condition"), raster = FALSE) + ggtitle("Sample Type")) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/cond_ko_human.png", cond_ko_human, width = 7, height = 6, units = "in")
+
+id_ko_human <- (DimPlot(integrated_data, reduction = "umap", group.by = c("orig.ident"), raster = FALSE) + ggtitle("Sample ID")) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/id_ko_human.png", id_ko_human, width = 7, height = 6, units = "in")
+
+qs_save(integrated_data, file = "/home/sofia/Projects/etmr/defaria/mouse/data/int_ko_tumor_sing.qs2", nthreads = 6)
+
+
+# Clusters with good mix of conditions
+
+sel_ko_clusters <- (DimPlot(subset(integrated_data, subset = RNA_snn_res.1.8 %in% c(3, 10, 27, 30, 35)), reduction = "umap", group.by = c("condition"), raster = FALSE, label = FALSE, split.by = "RNA_snn_res.1.8") + ggtitle("Cluster Leiden res 1.8") + DimPlot(subset(integrated_data, subset = RNA_snn_res.1.8 %in% c(3, 10, 27, 30, 35)), reduction = "umap", group.by = c("celltype.1.8"), raster = FALSE, label = FALSE, split.by = "RNA_snn_res.1.8", cols = c("#ef476f", "#ffd166", "#06d6a0", "#118ab2", "#073b4c")) + ggtitle("Cluster Leiden res 1.8")) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/sel_ko_clusters.png", sel_ko_clusters, width = 18, height = 12, units = "in")
+
+
+```
+
+```{r ko_markers}
+
+# Cluster markers
+integrated_data <- JoinLayers(integrated_data)
+
+gc()
+
+Idents(integrated_data) <- "RNA_snn_res.1.8"
+
+ko_etmr_markers <- FindAllMarkers(integrated_data)
+
+gc()
+
+
+View(ko_etmr_markers)
+
+mark_loading_table <- ko_etmr_markers |>
+  dplyr::rename(Gene = gene) |>
+  inner_join(cellmarkers_table, relationship = "many-to-many") |>
+  group_by(cluster) |>
+  dplyr::arrange(avg_log2FC) |>
+  dplyr::ungroup()
+
+View(mark_loading_table)
+
+write.csv(mark_loading_table, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/ko_mark_deg_table_sing.csv")
+
+```
+
+```{r}
+
+integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/int_ko_tumor_sing.qs2", nthreads = 6)
+
+jessa.ann <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/data/so_etmr1_annotated.rds")
+
+jessa.ann <- as.SingleCellExperiment(jessa.ann)
+
+int_sce <- as.SingleCellExperiment(integrated_data)
+
+gc()
+
+pred.ko.hum <- SingleR(test = int_sce, ref = jessa.ann, assay.type.test=1,
+    labels = jessa.ann$cell_types_2_etmr1, de.method = "wilcox")
+
+table(pred.ko.hum$pruned.labels)
+
+integrated_data <- AddMetaData(integrated_data, pred.ko.hum$pruned.labels, col.name = 'SingleR')
+
+
+integrated_data$SingleR <- gsub("RDG", "RGC", integrated_data$SingleR)
+
+singler_plot <- DimPlot(integrated_data, group.by = "SingleR", label = TRUE, repel = TRUE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/ko_singler_plot.png", singler_plot, width = 7, height = 6, units = "in")
+
+singler_ann <- integrated_data@meta.data |>
+  dplyr::select(orig.ident, celltype.1.8, SingleR, RNA_snn_res.1.8) |>
+  summarize(n(), .by = c(RNA_snn_res.1.8, celltype.1.8, SingleR))
+
+write.csv(singler_ann, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/ko_singler_ann.csv")
+```
+
+```{r ko_dif}
+
+#Score cellcycle
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+int_cc <- CellCycleScoring(integrated_data, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+ko_cc_plot <- DimPlot(int_cc, group.by = "Phase",  label = TRUE, repel = TRUE, label.size = 5) + theme(legend.position = "bottom") + 
+  ggtitle("Cell cycle on tumors and KO") + 
+  scale_color_discrete(palette = "Set2")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/ko_cc_plot_sing.png", ko_cc_plot, height = 7, width = 7, units = "in")
+
+split_ko_cc_plot <- DimPlot(int_cc, group.by = "Phase", split.by = "orig.ident", ncol = 6, label = TRUE, repel = TRUE, label.size = 5) + NoLegend() +
+  ggtitle("Cell cycle on tumors and KO")  + 
+  scale_color_discrete(palette = "Set2")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/split_ko_cc_plot_sing.png", split_ko_cc_plot, height = 11, width = 21, units = "in")
+
+qs_save(integrated_data, file = "/home/sofia/Projects/etmr/defaria/mouse/data/int_ko_tumor_sing.qs2", nthreads = 6)
+
+gc()
+```
+
+##### Pseudobulk
+
+later
+
+```{r}
+integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/int_ko_tumor_sing.qs2", nthreads = 6)
+
+gc()
+
+
+pseudo_int <- AggregateExpression(integrated_data, assays = "RNA", return.seurat = T, group.by = c("condition", "RNA_snn_res.1.8", "orig.ident"))
+
+
+pseudo_int
+```
+
+##### Trajectory
+
+```{r, warning=FALSE}
+
+integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/int_ko_tumor_sing.qs2", nthreads = 6)
+
+integrated_data <- RunUMAP(integrated_data, reduction = "integrated.mnn", dims = 1:30, n.components = 3, seed.use = 42, reduction.name = "umap3")
+
+cds <- as.cell_data_set(integrated_data)
+
+reducedDims(cds)$UMAP <- Embeddings(integrated_data, "umap3")
+
+colData(cds)$cluster <- integrated_data$RNA_snn_res.1.8
+
+colData(cds)$celltype.1.8 <- integrated_data$celltype.1.8 #check that this matches everywhere
+gc()
+
+# Build Monocle's internal graph/partitions
+
+cds@clusters$UMAP$partitions <- setNames(as.factor(rep(1, length(cds@colData@rownames))), cds@colData@rownames)
+
+cds <- learn_graph(cds, use_partition = FALSE)
+
+
+gc()
+
+cds <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/int_ko_tumor_sing_tr.qs2", nthreads = 6)
+
+ko_traj_clus_umap <- plot_cells_3d(cds)
+
+library(htmlwidgets)
+
+saveWidget(ko_traj_clus_umap, "/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/ko_traj_clus_umap_3d.html", selfcontained = TRUE)
+
+
+#Order in pseudotime
+
+origin_cells <- rownames(colData(cds))[colData(cds)$celltype.1.8=="RGC_NEC-like"]
+
+cds <- order_cells(cds, root_cells = origin_cells)
+
+
+gc()
+
+cds$pseudotime <- pseudotime(cds)
+
+source("~/Projects/etmr/defaria/scripts/functions.R")  
+
+ko_pseudo_umap <- plot_cells_3d(cds, color_cells_by = "pseudotime", alpha = .4)
+
+saveWidget(ko_pseudo_umap, "/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/ko_pseudo_umap_3d.html", selfcontained = TRUE)
+
+
+celltype_colors <- c("Neurons_Glut" = "#9381ff", "IPC_Glut" = "#b8b8ff",
+ "Neurons_GABA" = "#ff97c4", "IPC_GABA" = "#ffc8c4",
+ "Neurons" = "#ff70a6",
+ "Neurons_immature" = "#ff9770",
+ "IPC" = "#ffd670",
+ "RGC_NEC-like" = "#2fbf71", "RGC" = "#8cd867", 
+ "PC/EC" = "#61f2c2",
+ "Astrocytes" = "#72ddf7",
+ "Microglia" = "#b8d0ec", 
+ "Oligodendrocytes" = "#d2d2cf", 
+ "Lymphocytes" = "#118ab2")
+
+colData(cds)$celltype <- factor(gsub("_GABA|_Glut", "", colData(cds)$celltype.1.8), levels = c("RGC_NEC-like", "RGC", "IPC", "Neurons_immature", "Neurons", "PC/EC", "Microglia", "Lymphocytes", "Oligodendrocytes", "Astrocytes"))
+
+ko_celltype_umap <- plot_cells_3d_fixed(cds, color_cells_by = "celltype", color_palette = celltype_colors)
+
+saveWidget(ko_celltype_umap, "/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/ko_celltype_umap_3d.html", selfcontained = TRUE)
+
+
+
+#range of pseudotime per cell
+
+
+weird_order <- celltype_colors
+
+data.pseudo.ko <- as.data.frame(colData(cds)) 
+
+pseudo_celltype_ko <- data.pseudo.ko |>
+  ggplot(aes(pseudotime, reorder(celltype, pseudotime, median), fill = celltype))  +
+  geom_boxplot() +
+  scale_fill_manual(values = weird_order)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/pseudo_celltype_ko.png", pseudo_celltype_ko, height = 12, width = 8, units = "in")
+
+pseudo_cluster_ko <- data.pseudo.ko |>
+  ggplot(aes(pseudotime, reorder(cluster, pseudotime, median), fill = celltype))  +
+  geom_boxplot() +
+  scale_fill_manual(values = weird_order) +
+  ggtitle("Pseudotime by cluster 12-sp-KO-human integration")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/pseudo_cluster_ko.png", pseudo_cluster_ko, height = 10, width = 18, units = "in")
+
+
+qs_save(cds, "/home/sofia/Projects/etmr/defaria/mouse/data/int_ko_tumor_sing_tr.qs2", nthreads = 6)
+
+```
