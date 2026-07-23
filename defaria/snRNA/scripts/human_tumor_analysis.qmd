@@ -10,6 +10,7 @@ editor: visual
 library(here)
 library(dplyr)
 library(tibble)
+library(tidyr)
 library(Seurat)
 library(SeuratDisk) 
 library(SeuratObject) 
@@ -339,13 +340,12 @@ Idents(integrated_data) <- "RNA_snn_res.1"
 
 integrated_data@meta.data["celltype.1"]  <- celltype_1[as.character(Idents(integrated_data))]
 
-celltype_order <- c("RGC_NEC-like", "RGC", "IPC","Neurons_immature", "Neurons", "PC/EC", "Astrocytes", "Microglia", "Oligodendrocytes", "Lymphocytes")
+celltype_order <- c("RGC_NEC-like", "RGC", "IPC","Neurons_immature", "PC/EC", "Astrocytes", "Microglia", "Oligodendrocytes", "Lymphocytes")
 
 
 integrated_data@meta.data["celltype.1"]  <- factor(integrated_data@meta.data$celltype.1, levels = celltype_order)
 
 celltype_colors <- c(
-"Neurons" = "#ff70a6",
 "Neurons_immature" = "#ff9770",
 "IPC" = "#ffd670",
 "RGC_NEC-like" = "#2fbf71", "RGC" = "#8cd867", 
@@ -369,7 +369,6 @@ celltype_plot_human <- DimPlot(integrated_data,
         repel = TRUE,
         cols = celltype_colors
         ) + ggtitle("ETMR cell type")
-
 
 
 ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/celltype_plot_human.png"), celltype_plot_human, height = 8, width = 10, units = "in")
@@ -400,6 +399,9 @@ human_etmr_markers <- FindAllMarkers(integrated_data)
 
 gc()
 
+top_10 <- human_etmr_markers |>
+  group_by(cluster) |>
+  slice_max(avg_log2FC,n= 10)
 
 View(human_etmr_markers)
 
@@ -548,10 +550,11 @@ qs_save(cds, "/home/sofia/Projects/etmr/defaria/snRNA/data/int_human_tumor_sing_
 ```{r no_umap_recalc, warning=FALSE}
 integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing.qs2", nthreads = 6)
 
+FeaturePlot(integrated_data, features = c("TBR1", "EOMES", "ASCL1", "DCX", "TUBB3", "NEUROD1", "HES6"), order = TRUE)
+
 keep <- c("RGC_NEC-like", "RGC", "IPC","Neurons_immature", "Neurons")
 
 integrated_data <- subset(integrated_data, subset = celltype.1 %in% keep)
-
 
 integrated_data <- RunUMAP(integrated_data, reduction = "integrated.mnn", dims = 1:30, n.components = 3, seed.use = 2026, reduction.name = "umap3")
 
@@ -606,10 +609,9 @@ human_pseudo_umap <- plot_cells_3d(cds, color_cells_by = "pseudotime", alpha = .
 saveWidget(human_pseudo_umap, "/home/sofia/Projects/etmr/defaria/snRNA/plots/human_pseudo_umap_3d.html", selfcontained = TRUE)
 
 
-colData(cds)$celltype <- factor(colData(cds)$celltype, levels = c("RGC_NEC-like", "RGC", "IPC", "Neurons_immature", "Neurons"))
+colData(cds)$celltype <- factor(colData(cds)$celltype, levels = c("RGC_NEC-like", "RGC", "IPC", "Neurons_immature"))
 
 celltype_colors <- c(
-"Neurons" = "#ff70a6",
 "Neurons_immature" = "#ff9770",
 "IPC" = "#ffd670",
 "RGC_NEC-like" = "#2fbf71", "RGC" = "#8cd867")
@@ -637,13 +639,193 @@ pseudo_celltype_human <- data.pseudo.human |>
 ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/pseudo_celltype_human.png", pseudo_celltype_human, height = 6, width = 10, units = "in")
 
 pseudo_cluster_human <- data.pseudo.human |>
-  ggplot(aes(pseudotime, reorder(cluster, pseudotime, median), fill = celltype))  +
+  ggplot(aes(pseudotime, reorder(cluster, pseudotime, max), fill = celltype))  +
   geom_boxplot() +
   scale_fill_manual(values = weird_order) +
   ggtitle("Pseudotime by cluster ETMR human tumors integration clusters")
 
-ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/pseudo_cluster_human.png", pseudo_cluster_human, height = 18, width = 18, units = "in")
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/pseudo_cluster_human.png", pseudo_cluster_human, height = 10, width = 18, units = "in")
 
 
 qs_save(cds, "/home/sofia/Projects/etmr/defaria/snRNA/data/int_human_tumor_sing_tr_norecalc.qs2", nthreads = 6)
+```
+
+## By groups
+
+```{r}
+# groups <- c("A" = c("1", "3", "6", "7", "9"),
+#      "B" = c("14", "19", "11"),
+#      "C" = c("4", "5", "8", "12", "15"),
+#      "D" = c("2", "10"),
+#      "excluded" = c("13", "16", "17", "18", "20"))
+# 
+# groups_1 <- setNames(
+#   rep(names(groups), lengths(groups)),
+#   unlist(groups, use.names = FALSE)
+# )
+
+groups_1 <- c(
+  "1" = "A",
+  "2" = "D",
+  "3" = "A",
+  "4" = "C", 
+  "5" = "C",
+  "6" = "A",
+  "7" = "A",
+  "8" = "C",
+  "9" = "A",
+  "10" = "D",
+  "11" = "B",
+  "12" = "C",
+  "13" = "excluded",
+  "14" = "B",
+  "15" = "C",
+  "16" = "excluded",
+  "17" = "excluded",
+  "18" = "excluded",
+  "19" = "B",
+  "20" = "excluded"
+)
+
+
+integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing.qs2", nthreads = 6)
+
+Idents(integrated_data) <- "RNA_snn_res.1"
+
+integrated_data@meta.data["groups.1"]  <- unlist(groups_1)[as.character(Idents(integrated_data))]
+
+
+integrated_data@meta.data["groups.1"]  <- factor(integrated_data@meta.data$groups.1)
+
+by_group <- SplitObject(integrated_data, split.by = "groups.1")
+
+gc()
+
+by_group <- lapply(by_group, function(x) {
+#   x <- DietSeurat(x, layers = "counts", assays = "RNA")
+#   x[["RNA"]] <- split(x[["RNA"]], f = x$orig.ident)
+#   x <- NormalizeData(x)
+#   x <- FindVariableFeatures(x)
+#   x <- ScaleData(x)
+#   x <- RunPCA(x)
+#   x <- IntegrateLayers(
+#   x,
+#   method = SeuratWrappers::FastMNNIntegration
+# )
+#   x <- FindNeighbors(x, reduction = "integrated.mnn")
+  x <- RunUMAP(x, reduction = "integrated.mnn", dims = 1:30)
+  x
+})
+
+
+
+for (i in c(0.2, 0.5, 0.8, 1, 1.2, 1.5, 1.8, 2)) {
+  by_group <- lapply(by_group, function(x) {
+    x <- FindClusters(x, resolution = i, algorithm = 4, random.seed = 2026,
+            cluster.name = paste0("mnn_res_", i))
+    x
+})
+}
+
+
+library(clustree)
+
+clustree_by_group <- lapply(by_group, function(x) {
+  x <- clustree(x, prefix = "mnn_res_")
+  x
+})
+
+
+for (p in names(clustree_by_group)) {
+  ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/clustree/",p, ".png"), clustree_by_group[[p]], height = 10, width = 10, units = "in")
+}
+
+clus_umap_by_group <- lapply(by_group, function(x) {
+  x <- DimPlot(x, group.by = paste0("mnn_res_", c(0.2, 0.5, 0.8, 1, 1.2, 1.5, 1.8, 2)))
+  x
+})
+  
+for (p in names(clus_umap_by_group)) {
+  ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/clustering/",p, "_cluster.png"), clus_umap_by_group[[p]], height = 14, width = 18, units = "in")
+}
+
+for (g in by_group)  {for (x in names(cellmarkers)) {
+    g <- AddModuleScore(
+      g,
+      features = cellmarkers[x],
+      name = x
+    )
+  }}
+
+features_umap_by_group <- lapply(by_group, function(x) FeaturePlot(x, features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, raster = FALSE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+)) 
+
+for (p in names(features_umap_by_group)) {
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/features/",p, ".png"), features_umap_by_group[[p]], height = 20, width = 24, units = "in")}
+
+```
+
+```{r}
+library(SingleR)
+bygroup_sce <- lapply(by_group, function(x) {
+  x <- JoinLayers(x)
+  x <- as.SingleCellExperiment(x)
+  x})
+
+gc()
+
+jessa.ann <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/data/so_etmr1_annotated.rds")
+
+jessa.ann <- as.SingleCellExperiment(jessa.ann)
+
+pred.by.group <- lapply(bygroup_sce, function(x) {
+  x <- SingleR(test = x, ref = jessa.ann, assay.type.test=1,
+    labels = jessa.ann$cell_types_2_etmr1, de.method = "wilcox")
+  x})
+
+lapply(pred.by.group, function(x) table(x$pruned.labels))
+
+by_group <- setNames(
+  lapply(names(by_group), function(x) {
+    AddMetaData(
+      by_group[[x]],
+      pred.by.group[[x]]$pruned.labels,
+      col.name = "SingleR"
+    )
+  }),
+  names(by_group)
+)
+ 
+
+
+by_group <- lapply(by_group, function(x) {
+  x$SingleR <- gsub("RDG", "RGC", x$SingleR)
+  x
+  })
+
+singler_plot_by_group <- setNames(lapply(names(by_group), function(x) {
+  x <- DimPlot(by_group[[x]], group.by = "SingleR", label = TRUE, repel = TRUE) + ggtitle(paste("SingleR", x))
+  x
+}), names(by_group))
+
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/ko_singler_plot.png", singler_plot, width = 7, height = 6, units = "in")
+
+singler_ann <- integrated_data@meta.data |>
+  dplyr::select(orig.ident, celltype.1.8, SingleR, RNA_snn_res.1.8) |>
+  summarize(n(), .by = c(RNA_snn_res.1.8, celltype.1.8, SingleR))
+
+write.csv(singler_ann, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/ko_singler_ann.csv")
+```
+
+```{r}
+
 ```
