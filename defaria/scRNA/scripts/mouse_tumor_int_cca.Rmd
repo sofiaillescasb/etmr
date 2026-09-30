@@ -1,0 +1,161 @@
+---
+title: "CCA integration"
+output: html_notebook
+---
+
+```{r, include=FALSE}
+library(anndataR)
+library(Seurat)
+library(sctransform)
+library(future)
+options(future.globals.maxSize = 10 * 1024^3)  # 10 GB
+library(SeuratDisk)
+source("~/Projects/etmr/defaria/scripts/functions.R")
+```
+
+### Read data
+
+
+```{r}
+
+human_mouse <- read_h5ad("/home/sofia/Projects/etmr/defaria/scRNA/data/processed/merged_bothhuman_mouse.h5ad", as="Seurat")
+
+human_mouse <- DietSeurat(human_mouse, layers="counts")
+
+```
+
+```{r}
+human_mouse@meta.data
+```
+### Integration (CCA with SCTransform)
+
+
+```{r}
+
+# split the object by dataset to integrate
+hm.list <- SplitObject(human_mouse, split.by = "sample_origin")
+
+# perform SCTransform normalization
+hm.list <- lapply(X = hm.list, FUN = SCTransform)
+
+# select integration features and prep step
+features <- SelectIntegrationFeatures(hm.list)
+hm.list <- PrepSCTIntegration(
+  hm.list,
+  anchor.features = features
+)
+
+# downstream integration steps
+anchors <- FindIntegrationAnchors(
+  hm.list,
+  normalization.method = "SCT",
+  anchor.features = features,
+  reduction = "cca"
+)
+hm.integrated <- IntegrateData(anchors, normalization.method = "SCT")
+
+
+
+
+```
+
+```{r}
+hm.integrated
+```
+
+### Clustering
+
+```{r}
+human_mouse
+```
+
+
+```{r}
+
+library(dplyr)
+library(tibble)
+library(ggplot2)
+
+hm.integrated <-  hm.integrated |>
+  RunPCA(assay = "integrated") |>                                                              
+  FindNeighbors() |>
+  RunUMAP(dims = 1:30) |>
+  FindClusters(algorithm = 4, random.seed = 2026)
+
+DimPlot(hm.integrated, group.by = c("sample_origin","orig.ident"), label = FALSE)
+DimPlot(hm.integrated, group.by = c("seurat_clusters"), label = TRUE, shuffle = TRUE)
+
+umapdf <- as.data.frame(hm.integrated[["umap"]]@cell.embeddings) |>
+  rownames_to_column("cell")
+
+
+
+umapdf <- hm.integrated@meta.data |>
+  select(c("sample_origin","species","seurat_clusters")) |>
+  rownames_to_column("cell") |>
+  left_join(umapdf, by = "cell") |>
+  column_to_rownames("cell")
+  
+plot_one_over_other(umapdf, "umap_1", "umap_2", "sample_origin", "species", "mouse", "human", "CCA")
+plot_one_over_other(umapdf, "umap_1", "umap_2", "species", "species", "mouse", "human", "CCA")
+plot_one_over_other(umapdf, "umap_1", "umap_2", "seurat_clusters", "species", "mouse", "human", "CCA")
+
+plot_hist(umapdf, "seurat_clusters","sample_origin", "CCA")
+plot_hist(umapdf, "seurat_clusters","species", "CCA")
+```
+
+```{r}
+unique(hm.integrated@meta.data$sample_origin)
+
+```
+
+```{r}
+nec <- c("MDK",
+"MIF",
+"AC090498.1",
+"PSMA4",
+"SMS",
+"HSPA5",
+"RANBP1",
+"TPM1",
+"IGFBP2",
+"PFN1",
+"OSTC",
+"HMGA1",
+"LAPTM4A",
+"MYL12A",
+"PDIA6",
+"PRELID1",
+"ARF4",
+"OCIAD2",
+"MAD2L1",
+"PDIA3",
+"KPNA2",
+"AKR1B1",
+"EIF4E",
+"TMED9",
+"MRPL42")
+
+```
+
+
+```{r}
+FeaturePlot(hm.integrated, features = nec)
+
+setdiff(Features(hm.integrated[["RNA"]]) ,Features(hm.integrated[["SCT"]]))
+
+```
+
+
+```{r}
+
+hm_merged <- PrepSCTFindMarkers(object = hm.integrated)
+
+markers_hmint <- FindMarkers(
+  object = hm_merged,
+  assay = "SCT",
+  ident.1 = Idents(hm_merged),
+  recorrect_umi = FALSE
+)
+```
+

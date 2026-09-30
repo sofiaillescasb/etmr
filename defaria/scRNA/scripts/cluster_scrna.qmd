@@ -1,0 +1,592 @@
+---
+title: "scrna tumors"
+format: html
+editor: visual
+---
+
+## Analyzing scRNA-seq data from human tumors
+
+```{r include=FALSE}
+library(here)
+library(dplyr)
+library(tibble)
+library(Seurat)
+library(SeuratDisk)
+library(ggplot2)
+library(gt)
+library(patchwork)
+library(future)
+library(tidyr)
+# library(SoupX)
+library(SeuratWrappers)
+
+options(future.globals.maxSize = 3 * 1024^3)  # 3 GB
+```
+
+### Read data
+
+```{r}
+path <- paste0(here::here(), "/defaria/scRNA/data/raw")
+
+read_data <- Read10X(path)
+
+defar.data <- CreateSeuratObject(counts = read_data, project = "defaria")
+
+
+
+# path <- paste0(here::here(), "/defaria/scRNA/jessa/data/raw/")
+# 
+# read_data <- load10X(path)
+# 
+# jessa.data <- CreateSeuratObject(counts = read_data, project = "jessa")
+
+
+path <- paste0(here::here(), "/defaria/scRNA/data/raw/ETMR1/outs/filtered_feature_bc_matrix")
+
+read_data <- Read10X(path)
+
+jessa.data <- CreateSeuratObject(counts = read_data, project = "jessa")
+ 
+
+```
+
+### Preprocess
+
+```{r}
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+
+obj.list <- list(defaria = defar.data, jessa = jessa.data)
+
+obj.list <- lapply(obj.list, function(x) {
+  x[["percent.mt"]] <- PercentageFeatureSet(x, pattern = "^MT-")
+
+  x <- subset(x, subset = nFeature_RNA > 200 & 
+                         nFeature_RNA < 6000 & 
+                         nCount_RNA < 40000 & 
+                         percent.mt < 15)
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method = "vst")
+  x <- ScaleData(x)
+  x <- RunPCA(x, seed.use = 2026)
+  x <- FindNeighbors(x, dims = 1:30, reduction = "pca")
+  x <- FindClusters(x, resolution = 1, cluster.name = "clusters", algorithm = 4, random.seed = 2026)
+  x <- RunUMAP(x, dims = 1:30, reduction = "pca", reduction.name = "umap")
+  
+  return(x)
+})
+
+(DimPlot(obj.list$jessa, reduction = "umap", group.by = c("clusters"), label = TRUE) + ggtitle( "Jessa", subtitle = "Leiden resolution 1")) + (DimPlot(obj.list$defaria, reduction = "umap", group.by = c("clusters"), label = TRUE) + ggtitle("de Faria", subtitle = "Leiden resolution 1") )
+```
+
+```{r unint_plots, eval=FALSE}
+
+#These are the previous clusters, don't touch
+clus_unint_jessa <- DimPlot(obj.list$jessa,
+        reduction = "umap_unintegrated",
+        group.by = "unintegrated_clusters",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6) + ggtitle("Jessa: Leiden clusters resolution 0.8")
+
+clus_unint_defaria <- DimPlot(obj.list$defaria,
+        reduction = "umap_unintegrated",
+        group.by = "unintegrated_clusters",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6) + ggtitle("de Faria: Leiden clusters resolution 0.8")
+
+clus_unint_jessa
+clus_unint_defaria
+
+```
+
+### Genes
+
+```{r}
+cellmarkers <- list(
+    "Astrocytes" = c("GFAP", "ALDH1L1", "S100B", "SLC1A2", "ACSL6", "AGT"),
+    "Oligodendrocytes" = c("MBP", "MOG", "CLDN14", "NIPAL4", "PLP1", "ERMN", "CLDN14", "KLK6", "EML1"),
+    "Oligodendrocyte progenitors" = c("PDGFRA", "ALDOC", "OLIG1", "EPN2", "NEU4", "NKX6-2", "SOX10", "FYN"),
+    "Microglia" = c("RGS10", "DLEU7", "CD40", "CD68", "ITGAM", "CX3CR1", "TMEM119"),
+    "Ependymal" = c("LIAS", "SPAG6", "CFAP54", "FOXJ1", "RSPH1", "CCDC153"),
+    "Neuroblasts" = c("DCX", "NEUROG1", "NCAM1", "NEUROD1"),
+    "Neurons (general)" = c("DISP2", "PRPH", "CNTNAP2", "RBFOX3", "NEFM", "NRGN", "SGIP1", "ENO2"),
+    "GABA" = c("GAD1", "GAD2", "SLC6A1", "SLC32A1", "DLX1", "GABBR2", "GADD45B", "PAX2"),
+    "Glutamatergic" = c("SLC17A6", "SLC17A7", "SLC17A8"),
+    "Cycling" = c("TOP2A", "MKI67", "AURKA"),
+    "IPC" = c("EOMES", "HES6", "NEUROD4"),
+    "RDG" = c("PAX6", "SLC1A3", "PDGFD", "GLI3", "NOTCH3", "VCAM1", "HES5", "CDH4", "SPRY1", "AXIN2", "SOX2", "VIM", "NES")
+)
+```
+
+### Annotation
+
+```{r jessa_features}
+for (x in names(cellmarkers)) {
+  obj.list$defaria <- AddModuleScore(
+    obj.list$defaria,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+unint_feat_defar <- FeaturePlot(obj.list$defaria, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap",
+                            min.cutoff = 0,
+                            max.cutoff = 4,
+                            order = TRUE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0,
+  limits = c(-1, 3))
+
+ggsave(paste0(here::here(), "/defaria/scRNA/plots/umaps/1/unintegrated/tumors/celltype_plots_defar.png"), unint_feat_defar,height = 8, width = 14, units = "in")
+
+```
+
+```{r defaria_features}
+for (x in names(cellmarkers)) {
+  obj.list$jessa <- AddModuleScore(
+    obj.list$jessa,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+unint_feat_jessa <- FeaturePlot(obj.list$jessa, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap",
+                            min.cutoff = 0,
+                            max.cutoff = 4,
+                            order = TRUE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0,
+  limits = c(-1, 3))
+
+ggsave(paste0(here::here(), "/defaria/scRNA/plots/umaps/1/unintegrated/tumors/celltype_plots_jessa.png"), unint_feat_jessa,height = 8, width = 14, units = "in")
+
+
+unint_feat_jessa_orig <- FeaturePlot(obj.list$jessa, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap",
+                            min.cutoff = 0,
+                            max.cutoff = 4,
+                            order = TRUE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0)
+
+ggsave(paste0(here::here(), "/defaria/scRNA/plots/umaps/1/unintegrated/tumors/celltype_plots_jessa_orig.png"), unint_feat_jessa_orig,height = 8, width = 14, units = "in")
+
+```
+
+```{r annotation_unint}
+
+celltype_jessa <- c("1"= "RGC",
+                      "2"= "RGC-cycling",
+                      "3"= "Neuroblasts",
+                      "4"= "RGC-cycling",
+                      "5"= "Neurons",
+                      "6"= "Neuroblasts",
+                      "7"= "RGC",
+                      "8"= "IPC",
+                      "9"= "IPC",
+                      "10"= "RGC",
+                      "11"= "Astrocytes",
+                      "12"= "RGC-cycling",
+                      "13"= "Neuroblasts",
+                      "14"= "Microglia",
+                      "15"= "Neuroblasts"
+                      )
+
+celltype_defaria <- c("1"= "Neuroblasts",
+                      "2"= "Neuroblasts",
+                      "3"= "Neuroblasts",
+                      "4"= "RGC",
+                      "5"= "RGC-cycling",
+                      "6"= "RGC-cycling",
+                      "7"= "Microglia",
+                      "8"= "Astrocytes/Oligodendrocyte progenitors",
+                      "9"= "Neuroblasts",
+                      "10"= "Astrocytes/Ependymal")
+   
+# add to metadata
+
+```
+
+## Integration
+
+```{r}
+obj.list <- list(defaria = defar.data, jessa = jessa.data)
+
+common.genes <- Reduce(intersect, lapply(obj.list, rownames))
+
+obj.list <- lapply(obj.list, function(x) {
+  subset(x, features = common.genes)
+})
+
+
+merged.data <- merge(
+  obj.list$jessa, obj.list$defaria, 
+  add.cell.ids = c("jessa", "defaria")
+  )
+
+# int.data <- SplitObject(int.data, split.by = "orig.ident")
+
+merged.data <- NormalizeData(merged.data)
+merged.data <- FindVariableFeatures(merged.data, selection.method = "vst")
+merged.data <- ScaleData(merged.data)
+merged.data <- RunPCA(merged.data, seed.use = 2026, reduction.name = "pca_unintegrated")
+
+
+merged.data <- FindNeighbors(merged.data, dims = 1:30, reduction = "pca_unintegrated")
+merged.data <- FindClusters(merged.data, resolution = 1, cluster.name = "unintegrated_clusters", algorithm = 4, random.seed = 2026)
+merged.data <- RunUMAP(merged.data, dims = 1:30, reduction = "pca_unintegrated", reduction.name = "umap.unintegrated")
+
+
+DimPlot(merged.data
+        , reduction = "umap.unintegrated", group.by = c("orig.ident", "unintegrated_clusters"), label = TRUE)
+
+
+```
+
+```{r}
+cellmarkers <- list(
+    "Astrocytes" = c("GFAP", "ALDH1L1", "S100B", "SLC1A2", "ACSL6", "AGT"),
+    "Oligodendrocytes" = c("MBP", "MOG", "CLDN14", "NIPAL4", "PLP1", "ERMN", "CLDN14", "KLK6", "EML1"),
+    "Oligodendrocyte progenitors" = c("PDGFRA", "ALDOC", "OLIG1", "EPN2", "NEU4", "NKX6-2", "SOX10", "FYN"),
+    "Microglia" = c("RGS10", "DLEU7", "CD40", "CD68", "ITGAM", "CX3CR1", "TMEM119"),
+    "Ependymal" = c("LIAS", "SPAG6", "CFAP54", "FOXJ1", "RSPH1", "CCDC153"),
+    "Neuroblasts" = c("DCX", "NEUROG1", "NCAM1", "NEUROD1"),
+    "Neurons (general)" = c("DISP2", "PRPH", "CNTNAP2", "RBFOX3", "NEFM", "NRGN", "SGIP1", "ENO2"),
+    "GABA" = c("GAD1", "GAD2", "SLC6A1", "SLC32A1", "DLX1", "GABBR2", "GADD45B", "PAX2"),
+    "Glutamatergic" = c("SLC17A6", "SLC17A7", "SLC17A8"),
+    "Cycling" = c("TOP2A", "MKI67", "AURKA"),
+    "IPC" = c("EOMES", "HES6", "NEUROD4"),
+    "RDG" = c("PAX6", "SLC1A3", "PDGFD", "GLI3", "NOTCH3", "VCAM1", "HES5", "CDH4", "SPRY1", "AXIN2", "SOX2", "VIM", "NES")
+)
+  
+```
+
+```{r}
+for (x in names(cellmarkers)) {
+  merged.data <- AddModuleScore(
+    merged.data,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+unint_feat_1 <- FeaturePlot(merged.data, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap.unintegrated", 
+                            keep.scale = "all", 
+                            min.cutoff = 0,
+                            max.cutoff = 4,
+                            order = TRUE) + plot_layout(guides = "collect") &
+  theme(legend.position='bottom')
+
+ggsave(paste0(here::here(), "/defaria/scRNA/plots/umaps/1/unintegrated/tumors/unint_feat_1.png"), unint_feat_1, height = 12, width = 16, units = "in")
+
+```
+
+### RPCA
+
+```{r}
+int.data <- merged.data
+
+int.data <- IntegrateLayers(
+  object = int.data, method = RPCAIntegration,
+  orig.reduction = "pca_unintegrated", new.reduction = "integrated.rpca",
+  verbose = FALSE
+)
+
+int.data <- FindNeighbors(int.data, dims = 1:30, reduction = "integrated.rpca")
+int.data <- FindClusters(int.data, resolution = 1, cluster.name = "rpca_clusters", algorithm = 4, random.seed = 2026)
+int.data <- RunUMAP(int.data, dims = 1:30, reduction = "integrated.rpca", reduction.name = "umap.integrated.rpca", seed.use = 2026)
+
+DimPlot(int.data
+        , reduction = "umap.integrated.rpca", group.by = c("orig.ident", "rpca_clusters"), label = TRUE)
+
+DimPlot(int.data
+        , reduction = "umap.integrated.rpca", split.by = c("orig.ident"))
+```
+
+```{r}
+for (x in names(cellmarkers)) {
+  int.data <- AddModuleScore(
+    int.data,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+rcpa_feat_1 <- FeaturePlot(int.data, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap.integrated.rpca", 
+                            keep.scale = "all", 
+                            min.cutoff = 0,
+                            max.cutoff = 4,
+                            order = TRUE) + plot_layout(guides = "collect") &
+  theme(legend.position='bottom')
+
+ggsave(paste0(here::here(), "/defaria/scRNA/plots/umaps/1/integrated/tumors/rcpa_feat_1.png"), rcpa_feat_1, height = 12, width = 16, units = "in")
+
+```
+
+```{r}
+
+mean_celltype_rpca <- int.data@meta.data |>
+  dplyr::group_by(rpca_clusters) |>
+  reframe(across(paste0(names(cellmarkers),"1"), ~ mean(.x)))
+
+View(mean_celltype_rpca)
+
+```
+
+```{r}
+celltypes_rpca <- c("1"= "RGC",
+                    "2"= "RGC-cycling",
+                    "3"= "Neuroblasts (GABA)",
+                    "4"= "RGC-cycling",
+                    "5"= "Neuroblasts (GABA)",
+                    "6"= "Neuroblasts",
+                    "7"= "IPC",
+                    "8"= "Neuroblasts",
+                    "9"= "RGC-cycling", 
+                    "10"= "RGC",
+                    "11"= "Neuroblasts (GABA)", 
+                    "12"= "RGC-cycling",
+                    "13"= "RGC-cycling",
+                    "14"= "Astrocytes",
+                    "15"= "Microglia",
+                    "16"= "Astrocytes")
+
+int.data@meta.data["celltype_rpca"]  <- celltypes_rpca[as.character(Idents(int.data))]
+
+
+celltype_plot_rpca <- DimPlot(int.data,
+        reduction = "umap.unintegrated.rpca",
+        group.by = "celltype_rpca",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("RPCA integrated cell type")
+```
+
+### MNN
+
+```{r}
+
+int.data <- merged.data
+
+
+int.data <- IntegrateLayers(
+  object = int.data, method = SeuratWrappers::FastMNNIntegration,
+  orig.reduction = "pca_unintegrated", new.reduction = "integrated.mnn",
+  verbose = FALSE
+)
+
+
+int.data <- FindNeighbors(int.data, dims = 1:30, reduction = "integrated.mnn")
+int.data <- FindClusters(int.data, resolution = 1, cluster.name = "mnn_clusters", algorithm = 4, random.seed = 2026)
+int.data <- RunUMAP(int.data, dims = 1:30, reduction = "integrated.mnn", reduction.name = "umap.integrated.mnn", seed.use = 2026)
+
+DimPlot(int.data
+        , reduction = "umap.integrated.mnn", group.by = c("orig.ident", "mnn_clusters"), label = TRUE)
+
+DimPlot(int.data
+        , reduction = "umap.integrated.mnn", split.by = c("orig.ident"), label = TRUE)
+
+
+```
+
+```{r}
+
+for (x in names(cellmarkers)) {
+  int.data <- AddModuleScore(
+    int.data,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+mnn_feat_1 <- FeaturePlot(int.data, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap.integrated.mnn", 
+                            keep.scale = "all", 
+                            min.cutoff = 0,
+                            max.cutoff = 4,
+                            order = TRUE) + plot_layout(guides = "collect") &
+  theme(legend.position='bottom')
+
+ggsave(paste0(here::here(), "/defaria/scRNA/plots/umaps/1/integrated/tumors/mnn_feat_1.png"), mnn_feat_1, height = 12, width = 16, units = "in")
+
+
+```
+
+```{r}
+
+mean_celltype_mnn <- int.data@meta.data |>
+  dplyr::group_by(mnn_clusters) |>
+  reframe(across(paste0(names(cellmarkers),"1"), ~ mean(.x))) |>
+  column_to_rownames("mnn_clusters")
+  
+
+View(t(mean_celltype_mnn))
+```
+
+```{r}
+celltypes_mnn <- c("1"= "Neuroblasts (GABA)",
+                    "2"= "RGC",
+                    "3"= "RGC-cycling",
+                    "4"= "RGC-cycling",
+                    "5"= "Neuroblasts",
+                    "6"= "Neuroblasts/Neurons (GABA)",
+                    "7"= "RGC-cycling",
+                    "8"= "RGC",
+                    "9"= "IPC", 
+                    "10"= "Neuroblasts",
+                    "11"= "RGC-cycling", 
+                    "12"= "Neuroblasts (GABA)",
+                    "13"= "RGC-cycling",
+                    "14"= "RGC",
+                    "15"= "RGC",
+                    "16"= "Neuroblasts",
+                    "17"= "Microglia",
+                    "18"= "Astrocytes",
+                    "19"= "RGC-cycling",
+                    "20"= "IPC")
+
+int.data@meta.data["celltype_mnn"]  <- celltypes_mnn[as.character(Idents(int.data))]
+
+
+celltype_plot_mnn <- DimPlot(int.data,
+        reduction = "umap.integrated.mnn",
+        group.by = "celltype_mnn",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("MNN integrated cell type")
+
+
+```
+
+```{r}
+
+
+mnn_umapdf <- int.data@meta.data |>
+  rownames_to_column("cell") |>
+  select(cell, orig.ident, mnn_clusters, celltype_mnn)
+
+mnn_hist_id_clus <- plot_hist(mnn_umapdf, "mnn_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+
+mnn_hist_id_ct <- plot_hist(mnn_umapdf, "orig.ident", "celltype_mnn") + labs(title = "Cell type by sample", fill = "Cell type")
+
+```
+
+```{r}
+
+mnn_type_long <- int.data@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    unintegrated_clusters, 
+    mnn_clusters, 
+    celltype_mnn, 
+    paste0(names(cellmarkers),"1")
+    ) |>
+  pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              unintegrated_clusters, 
+              mnn_clusters, 
+              celltype_mnn), names_to = "cell_type"
+    )
+  
+mnn_type_long |>
+  ggplot(aes(x = mnn_clusters, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type))
+
+#Split dataframes by cell type to see if there's overlap between the cells 
+mnn_type_list <- mnn_type_long |>
+  dplyr::group_by(cell_type) |>
+  group_split() 
+
+mnn_type_list <- setNames(lapply(mnn_type_list, function(x) x |>
+  filter(value > .1)
+  ), sort(paste0(names(cellmarkers),"1")))
+
+lapply(mnn_type_list, function(x) table(x$celltype_mnn,
+      x$cell_type))
+
+lapply(mnn_type_list, function(x) table(x$mnn_clusters,
+      x$cell_type))
+
+lapply(mnn_type_list, function(x) table(x$orig.ident,
+      x$cell_type))
+length(mnn_type_list$Astrocytes1$cell)
+
+length(intersect(mnn_type_list$GABA1$cell, mnn_type_list$Glutamatergic1$cell))
+length(setdiff(mnn_type_list$GABA1$cell, mnn_type_list$Glutamatergic1$cell))
+
+length(intersect(mnn_type_list$RDG1$cell, mnn_type_list$Astrocytes1$cell))
+length(setdiff(mnn_type_list$RDG1$cell, mnn_type_list$Astrocytes1$cell))
+
+length(intersect(mnn_type_list$Oligodendrocytes1$cell, mnn_type_list$Astrocytes1$cell))
+length(setdiff(mnn_type_list$Oligodendrocytes1$cell, mnn_type_list$Astrocytes1$cell))
+
+
+```
+
+```{r}
+int.data.joined <- JoinLayers(int.data)
+
+
+pb@meta.data
+
+Idents(int.data.joined) <- "mnn_clusters"
+
+g18_vs_15 <- FindMarkers(
+  int.data.joined,
+  ident.1 = "18",
+  ident.2 = "15",
+  test.use = "wilcox",
+  assay = "RNA",
+  logfc.threshold = 0,
+  only.pos = TRUE,
+  min.diff.pct = 0.25
+)
+
+View(g18_vs_15)
+
+g4_vs_7 <- FindMarkers(
+  int.data.joined,
+  ident.1 = "4",
+  ident.2 = "7",
+  test.use = "wilcox",
+  assay = "RNA",
+  min.pct	 = 0.1,
+  only.pos = FALSE,
+  min.diff.pct = 0.25
+)
+
+View(g4_vs_7)
+```

@@ -1,0 +1,421 @@
+---
+title: "Preprocess"
+format: html
+editor: visual
+---
+
+```{r, include=FALSE}
+library(Seurat) 
+library(SeuratDisk) 
+library(SeuratObject) 
+library(SeuratWrappers) 
+library(DoubletFinder)
+library(future) 
+options(future.globals.maxSize = 16 * 1024^3) # 16 GB 
+library(qs2)
+library(ggplot2)
+library(tibble)
+library(decontX)
+```
+
+```         
+$GSM8058157
+An object of class Seurat 
+18082 features across 2107 samples within 1 assay 
+Active assay: RNA (18082 features, 0 variable features)
+ 1 layer present: counts
+
+$GSM8058158
+An object of class Seurat 
+18082 features across 5903 samples within 1 assay 
+Active assay: RNA (18082 features, 0 variable features)
+ 1 layer present: counts
+
+$GSM8058159
+An object of class Seurat 
+18082 features across 9662 samples within 1 assay 
+Active assay: RNA (18082 features, 0 variable features)
+ 1 layer present: counts
+
+$GSM8058160
+An object of class Seurat 
+18082 features across 5889 samples within 1 assay 
+Active assay: RNA (18082 features, 0 variable features)
+ 1 layer present: counts
+
+$GSM8058161
+An object of class Seurat 
+18082 features across 11731 samples within 1 assay 
+Active assay: RNA (18082 features, 0 variable features)
+ 1 layer present: counts
+
+$GSM8058162
+An object of class Seurat 
+18082 features across 1545 samples within 1 assay 
+Active assay: RNA (18082 features, 0 variable features)
+ 1 layer present: counts
+
+$GSM8058163
+An object of class Seurat 
+18082 features across 6862 samples within 1 assay 
+Active assay: RNA (18082 features, 0 variable features)
+ 1 layer present: counts
+
+$GSM8058164
+An object of class Seurat 
+18082 features across 4358 samples within 1 assay 
+Active assay: RNA (18082 features, 0 variable features)
+ 1 layer present: counts
+
+$GSM8058165
+An object of class Seurat 
+18082 features across 2792 samples within 1 assay 
+Active assay: RNA (18082 features, 0 variable features)
+ 1 layer present: counts
+```
+
+![](images/clipboard-2467831149.png)
+
+```{r human}
+#data from ~/Projects/etmr/defaria/snRNA/scripts/cluster_rna.qmd
+snrna.data <- readRDS(paste0(here::here(), "/defaria/snRNA/data/combined_fixed_tumors_raw.rds"))
+
+snrna.data@meta.data["condition"] <- "human_tumor"
+
+Idents(snrna.data) <- "orig.ident"
+
+snrna.data <- SplitObject(snrna.data)
+
+snrna.data <- lapply(snrna.data, function(x) {
+  x[["percent.mt"]] <- PercentageFeatureSet(x, pattern = "^MT-")
+  x
+  })
+
+human_mito <- lapply(snrna.data, function(x) {
+  FeatureScatter(x, feature1 = "nCount_RNA", feature2 = "percent.mt")
+  }
+  )
+
+human_mito <- patchwork::wrap_plots(human_mito)
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/QC/mito_nfeature_human.png", human_mito,width = 21, height = 16, units = "in")
+
+snrna.data <- lapply(snrna.data, function(x) {
+  Idents(x) <- "orig.idents"
+  x
+})
+
+human_feat <- patchwork::wrap_plots(lapply(snrna.data, function(x) {
+  FeatureScatter(x, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+  }
+  ))
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/QC/nfeature_human.png", human_feat,width = 21, height = 16, units = "in")
+
+snrna.data <- lapply(snrna.data, function(x) {
+  x <- subset(
+    x,
+    subset = nFeature_RNA > 250 &
+             nFeature_RNA < 9000 &
+             nCount_RNA < 75000 &
+             percent.mt < 15
+  )
+
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x)
+  x <- ScaleData(x)
+  x <- RunPCA(x)
+  x <- FindNeighbors(x, dims = 1:30)
+  x <- FindClusters(x, resolution = .8, algorithm = 4, random.seed = 2026)
+  x <- RunUMAP(x, dims = 1:30)
+  x
+})
+
+#Number of cells before filtering
+cells_bef_filt <- tribble(
+  ~orig.ident,      ~cells_recovered,
+  "GSM8058157", 2107, 
+  "GSM8058158", 5903, 
+  "GSM8058159", 9662, 
+  "GSM8058160", 5889, 
+  "GSM8058161", 11731, 
+  "GSM8058162", 1545, 
+  "GSM8058163", 6862, 
+  "GSM8058164", 4358, 
+  "GSM8058165", 2792)
+
+multi_rate <- tribble(
+  ~multi_rate,      ~cells_recovered,
+  0.004, 500,
+  0.008, 1000,
+  0.016, 2000,
+  0.023, 3000,
+  0.031, 4000,
+  0.039, 5000,
+  0.046, 6000,
+  0.054, 7000,
+  0.061, 8000,
+  0.069, 9000,
+  0.076, 10000)
+
+model.lm <- lm(multi_rate ~ cells_recovered, data = multi_rate)
+
+multi_rate <- predict(model.lm, newdata = cells_bef_filt)
+
+cells_bef_filt <- cbind(cells_bef_filt, multi_rate)
+
+gc()
+
+snrna.data <- lapply(snrna.data, function(x) {
+  nExp <- round(cells_bef_filt[cells_bef_filt$orig.ident %in% x$orig.ident,]$multi_rate*length(x$orig.ident))
+  x <- doubletFinder(x, PCs = 1:15, pN = 0.25, pK = 0.09, nExp = nExp, reuse.pANN = NULL, sct = FALSE)
+  x
+})
+
+doublet_plots_human <- lapply(names(snrna.data), function(x) DimPlot(snrna.data[[x]], group.by = colnames(snrna.data[[x]]@meta.data)[11]) + ggtitle(x))
+
+doublet_plots_human <- patchwork::wrap_plots(doublet_plots_human, guides = "collect")
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/QC/human_plot_doub.png", doublet_plots_human, width = 21, height = 16, units = "in")
+
+clus_plots_human <- lapply(names(snrna.data), function(x) DimPlot(snrna.data[[x]], group.by = "RNA_snn_res.0.8", label = TRUE) + ggtitle(x) + NoLegend()) 
+
+clus_plots_human <- patchwork::wrap_plots(clus_plots_human)
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/QC/clus_plots_human.png", clus_plots_human, width = 21, height = 16, units = "in")
+
+qs_save(snrna.data, file = "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/preprocessed/human_prep.qs2", nthreads = 6)
+```
+
+```         
+$`12_WT1_SP`
+An object of class Seurat 
+31521 features across 9806 samples within 1 assay 
+Active assay: RNA (31521 features, 0 variable features)
+ 1 layer present: counts
+
+$`12_WT2_SP`
+An object of class Seurat 
+31521 features across 10860 samples within 1 assay 
+Active assay: RNA (31521 features, 0 variable features)
+ 1 layer present: counts
+
+$`12_WT3_SP`
+An object of class Seurat 
+31521 features across 7823 samples within 1 assay 
+Active assay: RNA (31521 features, 0 variable features)
+ 1 layer present: counts
+```
+
+```{r wt}
+
+wt_mouse <- readRDS(paste0(here::here(), "/defaria/mouse/data/so_12_SP_WT_prefiltered.rds"))
+
+wt_mouse@meta.data["condition"] <- "mouse_WT" 
+
+wt_mouse@meta.data$orig.ident <- wt_mouse@meta.data$sample_origin
+
+Idents(wt_mouse) <- "orig.ident"
+
+wt_mouse <- SplitObject(wt_mouse)
+
+wt_mouse <- lapply(wt_mouse, function(x) {
+  x[["percent.mt"]] <- PercentageFeatureSet(x, pattern = "^mt-")
+  x
+  })
+
+wt_mito <- patchwork::wrap_plots(lapply(wt_mouse, function(x) {
+  FeatureScatter(x, feature1 = "nCount_RNA", feature2 = "percent.mt")
+  }
+  ))
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/QC/mito_wt.png", wt_mito, width = 16, height = 8, units = "in")
+
+wt_feat <- patchwork::wrap_plots(lapply(wt_mouse, function(x) {
+  FeatureScatter(x, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+  }
+  ))
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/QC/wt_feat.png", wt_feat, width = 16, height = 8, units = "in")
+
+wt_mouse <- lapply(wt_mouse, function(x) {
+  x <- subset(
+    x, subset = nFeature_RNA > 250 & nFeature_RNA < 9000 & nCount_RNA < 75000
+  )
+
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x)
+  x <- ScaleData(x)
+  x <- RunPCA(x)
+  x <- FindNeighbors(x, dims = 1:30)
+  x <- FindClusters(x, resolution = .8, algorithm = 4, random.seed = 2026)
+  x <- RunUMAP(x, dims = 1:30)
+  x
+})
+
+
+#Number of cells before filtering
+cells_bef_filt <- tribble(
+  ~orig.ident,      ~cells_recovered,
+  "12_WT1_SP", 9806, 
+  "12_WT2_SP", 10860, 
+  "12_WT3_SP", 7823)
+
+multi_rate <- tribble(
+  ~multi_rate,      ~cells_recovered,
+  0.004, 500,
+  0.008, 1000,
+  0.016, 2000,
+  0.023, 3000,
+  0.031, 4000,
+  0.039, 5000,
+  0.046, 6000,
+  0.054, 7000,
+  0.061, 8000,
+  0.069, 9000,
+  0.076, 10000)
+
+model.lm <- lm(multi_rate ~ cells_recovered, data = multi_rate)
+
+multi_rate <- predict(model.lm, newdata = cells_bef_filt)
+
+cells_bef_filt <- cbind(cells_bef_filt, multi_rate)
+
+gc()
+
+wt_mouse <- lapply(wt_mouse, function(x) {
+  nExp <- round(cells_bef_filt[cells_bef_filt$orig.ident %in% x$orig.ident,]$multi_rate*length(x$orig.ident))
+  x <- doubletFinder(x, PCs = 1:15, pN = 0.25, pK = 0.09, nExp = nExp, reuse.pANN = NULL, sct = FALSE)
+  x
+})
+
+doublet_plots_mouse <- lapply(names(wt_mouse), function(x) DimPlot(wt_mouse[[x]], group.by = colnames(wt_mouse[[x]]@meta.data)[12]) + ggtitle(x))
+
+doublet_plots_mouse <- patchwork::wrap_plots(doublet_plots_mouse, guides = "collect")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/QC/mouse_plot_doub.png", doublet_plots_mouse, width = 21, height = 7, units = "in")
+
+clus_plots_mouse <- patchwork::wrap_plots(lapply(names(wt_mouse), function(x) DimPlot(wt_mouse[[x]], group.by = "RNA_snn_res.0.8", label = TRUE) + ggtitle(x) + NoLegend())) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/QC/clus_plots_mouse.png", clus_plots_mouse, width = 21, height = 7, units = "in")
+
+qs_save(wt_mouse, file = "/home/sofia/Projects/etmr/defaria/mouse/data/wt_prep.qs2", nthreads = 6)
+
+```
+
+```         
+$`12_KO1_SP`
+An object of class Seurat 
+31790 features across 9022 samples within 1 assay 
+Active assay: RNA (31790 features, 0 variable features)
+ 1 layer present: counts
+
+$`12_KO2_SP`
+An object of class Seurat 
+31790 features across 11992 samples within 1 assay 
+Active assay: RNA (31790 features, 0 variable features)
+ 1 layer present: counts
+
+$`12_KO3_SP`
+An object of class Seurat 
+31790 features across 8781 samples within 1 assay 
+Active assay: RNA (31790 features, 0 variable features)
+ 1 layer present: counts
+```
+
+```{r ko}
+
+ko_mouse <- readRDS(paste0(here::here(), "/defaria/mouse/data/so_12_SP_KO_prefiltered.rds"))
+
+ko_mouse@meta.data["condition"] <- "mouse_KO" 
+
+ko_mouse@meta.data$orig.ident <- ko_mouse@meta.data$sample_origin
+
+Idents(ko_mouse) <- "orig.ident"
+
+ko_mouse <- SplitObject(ko_mouse)
+
+ko_mouse <- lapply(ko_mouse, function(x) {
+  x[["percent.mt"]] <- PercentageFeatureSet(x, pattern = "^mt-")
+  x
+  })
+
+ko_mito <- patchwork::wrap_plots(lapply(ko_mouse, function(x) {
+  FeatureScatter(x, feature1 = "nCount_RNA", feature2 = "percent.mt")
+  }
+  ))
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/QC/mito_ko.png", ko_mito, width = 16, height = 8, units = "in")
+
+ko_feat <- patchwork::wrap_plots(lapply(ko_mouse, function(x) {
+  FeatureScatter(x, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+  }
+  ))
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/QC/ko_feat.png", ko_feat, width = 16, height = 8, units = "in")
+
+ko_mouse <- lapply(ko_mouse, function(x) {
+  x <- subset(
+    x, subset = nFeature_RNA > 250 & nFeature_RNA < 9000 & nCount_RNA < 75000 &
+             percent.mt < 15
+  )
+
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x)
+  x <- ScaleData(x)
+  x <- RunPCA(x)
+  x <- FindNeighbors(x, dims = 1:30)
+  x <- FindClusters(x, resolution = .8, algorithm = 4, random.seed = 2026)
+  x <- RunUMAP(x, dims = 1:30)
+  x
+})
+
+
+#Number of cells before filtering
+cells_bef_filt <- tribble(
+  ~orig.ident,      ~cells_recovered,
+  "12_KO1_SP", 9022, 
+  "12_KO2_SP", 11992, 
+  "12_KO3_SP", 8781)
+
+multi_rate <- tribble(
+  ~multi_rate,      ~cells_recovered,
+  0.004, 500,
+  0.008, 1000,
+  0.016, 2000,
+  0.023, 3000,
+  0.031, 4000,
+  0.039, 5000,
+  0.046, 6000,
+  0.054, 7000,
+  0.061, 8000,
+  0.069, 9000,
+  0.076, 10000)
+
+model.lm <- lm(multi_rate ~ cells_recovered, data = multi_rate)
+
+multi_rate <- predict(model.lm, newdata = cells_bef_filt)
+
+cells_bef_filt <- cbind(cells_bef_filt, multi_rate)
+
+gc()
+
+ko_mouse <- lapply(ko_mouse, function(x) {
+  nExp <- round(cells_bef_filt[cells_bef_filt$orig.ident %in% x$orig.ident,]$multi_rate*length(x$orig.ident))
+  x <- doubletFinder(x, PCs = 1:15, pN = 0.25, pK = 0.09, nExp = nExp, reuse.pANN = NULL, sct = FALSE)
+  x
+})
+
+doublet_plots_mouse <- lapply(names(ko_mouse), function(x) DimPlot(ko_mouse[[x]], group.by = colnames(ko_mouse[[x]]@meta.data)[12]) + ggtitle(x))
+
+doublet_plots_mouse <- patchwork::wrap_plots(doublet_plots_mouse, guides = "collect")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/QC/ko_mouse_plot_doub.png", doublet_plots_mouse, width = 21, height = 7, units = "in")
+
+clus_plots_mouse <- patchwork::wrap_plots(lapply(names(ko_mouse), function(x) DimPlot(ko_mouse[[x]], group.by = "RNA_snn_res.0.8", label = TRUE) + ggtitle(x) + NoLegend())) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/QC/ko_clus_plots_mouse.png", clus_plots_mouse, width = 21, height = 7, units = "in")
+
+qs_save(ko_mouse, file = "/home/sofia/Projects/etmr/defaria/mouse/data/ko_prep.qs2", nthreads = 6)
+
+```

@@ -3,6 +3,7 @@ library(dplyr)
 library(tibble)
 library(Seurat)
 library(SeuratDisk)
+library(SoupX)
 
 ids <- c(
   "GSM8058157_KK22-H-225",
@@ -16,9 +17,21 @@ ids <- c(
 "GSM8058165_KK23-H-512"
 )
 
-path <- sapply(ids, function(x) paste0(here::here(), "/de Faria/snRNA/data/GSE254819_RAW/", x, "/"))
+path <- sapply(ids, function(x) paste0(here::here(), "/defaria/snRNA/data/raw/GSE254819_RAW/", x, "/"))
 
-read_data <- Read10X(path)
+library(DropletUtils)
+
+raw <- Read10X(path[[2]])
+
+e <- emptyDrops(raw)
+cells <- which(e$FDR < 0.01)
+
+filtered <- raw[, cells]
+
+read_data <- load10X(path[[2]])
+
+read_data <- autoEstCont(read_data)
+read_data <- adjustCounts(data_etmr1, roundToInt=TRUE)
 
 snrna.data <- CreateSeuratObject(counts = read_data, project = "snfixedtumor")
 

@@ -1,0 +1,2214 @@
+---
+title: "Cluster snRNA"
+format: html
+editor: visual
+---
+
+# Finding common cell types in human tumors
+
+## Read data
+
+```{r, include=FALSE}
+library(here)
+library(dplyr)
+library(tibble)
+library(Seurat)
+library(SeuratDisk)
+library(SeuratObject)
+library(ggplot2)
+library(gt)
+library(patchwork)
+library(future)
+library(tidyr)
+library(monocle3)
+library(clustree)
+library(qs2)
+library(paletteer)
+library(htmlwidgets)
+```
+
+```{r eval=TRUE}
+ids <- c(
+  "GSM8058157_KK22-H-225",
+"GSM8058158_KK22-H-226", 
+"GSM8058159_KK22-H-227",
+"GSM8058160_KK23-H-507",
+"GSM8058161_KK23-H-508",
+"GSM8058162_KK23-H-509",
+"GSM8058163_KK23-H-510",
+"GSM8058164_KK23-H-511",
+"GSM8058165_KK23-H-512"
+)
+
+path <- sapply(ids, function(x) paste0(here::here(), "/defaria/snRNA/data/raw/GSE254819_RAW/", x, "/"))
+
+# can't use soupx because these seem to be filtered already...
+
+read_data <- Read10X(path)
+
+snrna.data <- CreateSeuratObject(counts = read_data, project = "snfixedtumor")
+
+sample_info <- df <- tribble(
+  ~orig.ident,      ~Sample_ID,   ~Tumor_Type,
+  "GSM8058157", "KK22-H-225", "C19MC",
+  "GSM8058158", "KK22-H-226", "C19MC",
+  "GSM8058159", "KK22-H-227", "Dicer",
+  "GSM8058160", "KK23-H-507", "C19MC",
+  "GSM8058161", "KK23-H-508", "C19MC",
+  "GSM8058162", "KK23-H-509", "C19MC",
+  "GSM8058163", "KK23-H-510", "C19MC",
+  "GSM8058164", "KK23-H-511", "C19MC",
+  "GSM8058165", "KK23-H-512", "C19MC")
+
+
+snrna.data@meta.data <- snrna.data@meta.data %>%
+  rownames_to_column(var = "rownames") %>%
+  right_join(sample_info, by = "orig.ident") %>%
+  column_to_rownames(var = "rownames")
+
+saveRDS(snrna.data, paste0(here::here(), "/defaria/snRNA/data/combined_fixed_tumors_raw.rds"))
+
+```
+
+## Filter, normalize, and find variable features
+
+```{r eval=FALSE}
+
+snrna.data[["percent.mt"]] <- PercentageFeatureSet(snrna.data, pattern = "^MT-")
+
+snrna.data <- subset(snrna.data, subset = nFeature_RNA > 200 & nFeature_RNA < 6000 & nCount_RNA < 40000 & percent.mt < 15)
+
+snrna.data <- NormalizeData(snrna.data, normalization.method = "LogNormalize",
+  scale.factor = 10000)
+
+snrna.data <- FindVariableFeatures(snrna.data, selection.method = "vst")
+```
+
+## Unintegrated
+
+### Run PCA
+
+```{r eval=FALSE}
+snrna.data <- ScaleData(snrna.data, verbose = FALSE)
+
+#When you run this with features = NULL you use variable features by default
+snrna.data <- RunPCA(snrna.data, verbose = FALSE, seed.use = 2026, reduction.name = "unint_pca", npcs = 50) 
+
+```
+
+```{r, eval=FALSE, warning=FALSE}
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+snrna.data <- run_umap(snrna.data, red="unint_pca")
+```
+
+```{r eval=FALSE}
+
+saveRDS(snrna.data, paste0(here::here(), "/defaria/snRNA/data/combined_fixed_tumors.rds"))
+```
+
+### Clustering (start here)
+
+```{r}
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+snrna.data <- readRDS(paste0(here::here(), "/defaria/snRNA/data/combined_fixed_tumors.rds"))
+
+clus_unint <- DimPlot(snrna.data,
+        reduction = "umap_unintegrated",
+        group.by = "unintegrated_clusters",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6) + ggtitle("Leiden clusters resolution 1.8")
+
+id_unint <- DimPlot(snrna.data,
+        reduction = "umap_unintegrated",
+        group.by = "orig.ident",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("Sample ID")
+
+
+mutation_unint <- DimPlot(snrna.data,
+        reduction = "umap_unintegrated",
+        group.by = "Tumor_Type",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("Tumor mutation")
+
+
+unint_patch <- id_unint / mutation_unint / clus_unint + plot_annotation(title = "Unintegrated UMAP")
+
+
+```
+
+24/03/2026
+
+Started with the preprocessing and unintegrated clustering of snRNA tumors. Looks like I did do it on December 5 but only using scanorama and harmony. Apparently did cca too but I don't know exactly where the script is, though it's probably not SCTransformed. I'm gonna do it again here just in case.
+
+I also need to figure out how to do the plots with
+
+```         
+AverageExpression()
+```
+
+and organize all the folders.
+
+Tomorrow I need to do the histograms and the integration, as well as start on the annotations.
+
+### Histograms
+
+```{r}
+#Make dataframe for ggplotting flexibility
+unint_umapdf <- snrna.data@meta.data |>
+  dplyr::select(orig.ident, unintegrated_clusters, Tumor_Type) |>
+  rownames_to_column("cell")
+
+unint_hist_id <- plot_hist(unint_umapdf, "unintegrated_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+unint_hist_mut <- plot_hist(unint_umapdf, "unintegrated_clusters", "Tumor_Type") + labs(title = "Mutation", fill = "Mutation")
+
+unint_id_pct <- unint_umapdf |>
+  dplyr::count(unintegrated_clusters, orig.ident) |>
+  dplyr::group_by(unintegrated_clusters) |>
+  dplyr::mutate(percentage = n / sum(n) * 100)
+
+unint_mut_pct <- unint_umapdf |>
+  dplyr::count(unintegrated_clusters, Tumor_Type) |>
+  dplyr::group_by(unintegrated_clusters) |>
+  dplyr::mutate(percentage = round(n / sum(n) * 100,2)) 
+
+dicer_sel_clus <- unint_mut_pct |>
+  dplyr::filter(Tumor_Type == "Dicer" & 75 > percentage & percentage >= 25) |>
+  dplyr::ungroup() |>
+  dplyr::rename() |>
+  gt(groupname_col = "Tumor_Type",
+    row_group_as_column = TRUE) |>
+  cols_label(
+    unintegrated_clusters = "Cluster",
+    n = "# of cells",
+    percentage = "Percentage"
+  ) |>
+  tab_style(
+    style = list(
+      cell_fill(color = "lightcyan"),
+      "font-variant: small-caps;",
+      cell_text(v_align = "middle")
+    ),
+    locations = cells_row_groups()
+  ) |>
+  tab_header(
+    title = "Selected clusters",
+    subtitle = "Leiden clustering on unintegrated data (res = 1.8)"
+  )
+
+unint_plots <- ((id_unint + theme(legend.position = "none", plot.title=element_blank())) + 
+    (unint_hist_id + theme(plot.title=element_blank()))) /
+  ((mutation_unint + theme(legend.position = "none", plot.title=element_blank())) + 
+     (unint_hist_mut + theme(plot.title=element_blank())))/
+  ((clus_unint + theme(legend.position = "none", plot.title=element_blank())) + dicer_sel_clus) + plot_annotation(title = "Untintegrated")
+
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/unintegrated/tumors/unint_plots.png"), unint_plots,height = 12, width = 12, units = "in")
+```
+
+### Annotation
+
+```{r cellmarkers}
+
+#   cellmarkers <- list(
+#     "Astrocytes" = c("APOE", "GFAP", "SLC1A2"),
+#     "Oligodendrocytes" = c("OLIG1", "OLIG2", "PDGFRA", "CSPG4", "NKX2-2", "SOX10"),
+#     "Microglia" = c("AIF1", "TYROBP"),
+#     "Neurons (general)" = c("SNAP25", "DCX", "DNER", "RBFOX3"),
+#     "GABA" = c("GAD1", "GAD2", "SLC6A1", "SLC32A1", "DLX1", "DLX2"),
+#     "Glutamatergic" = c("SLC17A6", "EMX1", "TBR1", "SLC17A7", "GRIN1", "CAMK2A"),
+#     "Cycling" = c("TOP2A", "MKI67", "AURKA"),
+#     "IPC" = c("ASCL1", "GADD45G", "BTG2", "CCND2", "EOMES", "NEUROD1"),
+#     "RDG" = c("PAX6", "SOX2", "VIM", "NES", "CCND1", "PTN", "HMGA2", "HES1", "HES5", "FABP7", "SLC1A3"),
+#   "NEC vs RDG" = c("MDK",
+#          "MIF",
+#          #"AC090498.1", #not in data
+#          "PSMA4",
+#          "SMS",
+#          "HSPA5",
+#          # "RANBP1", #not in data
+#          "TPM1",
+#          "IGFBP2",
+#          "PFN1",
+#          "OSTC",
+#          "HMGA1",
+#          "LAPTM4A",
+#          "MYL12A",
+#          "PDIA6",
+#          # "PRELID1", # not in data
+#          "ARF4",
+#          "OCIAD2",
+#          "MAD2L1",
+#          "PDIA3",
+#          "KPNA2",
+#          "AKR1B1",
+#          "EIF4E",
+#          "TMED9"
+#          # ,"MRPL42" # not in data
+#          ),
+#   "Malignant" = c("MCM7",
+#                 "NME1",
+#                 "NONO",
+#                 "PFDN2",
+#                 "NHP2",
+#                 "VBP1",
+#                 "CCT3",
+#                 "TXNRD1"))
+# 
+# cellmarkers <- list(
+#     "Astrocytes" = c("GFAP", "ALDH1L1", "S100B", "SLC1A2", "ACSL6", "AGT"),
+#     "Oligodendrocytes" = c("MBP", "MOG", "CLDN14", "NIPAL4", "PLP1", "ERMN", "CLDN14", "KLK6", "EML1"),
+#     "Oligodendrocyte progenitors" = c("PDGFRA", "ALDOC", "OLIG1", "EPN2", "NEU4", "NKX6-2", "SOX10", "FYN"),
+#     "Microglia" = c("RGS10", "DLEU7", "CD40", "CD68", "ITGAM", "CX3CR1", "TMEM119"),
+#     "Ependymal" = c("LIAS", "SPAG6", "CFAP54", "FOXJ1", "RSPH1", "CCDC153"),
+#     "Neurons (general)" = c("DISP2", "PRPH", "CNTNAP2", "RBFOX3", "CHAT", "ISL1", "NEFM", "NRGN", "SGIP1", "ENO2"),
+#     "GABA" = c("GAD1", "GAD2", "SLC6A1", "SLC32A1", "DLX1", "GABBR2", "GADD45B", "PAX2"),
+#     "Glutamatergic" = c("SLC17A6", "SLC17A7", "SLC17A8"),
+#     "Cycling" = c("TOP2A", "MKI67", "AURKA"),
+#     "IPC" = c("EOMES", "NEUROD1", "DCX", "INSM1", "HES6", "NEUROD4"),
+#     "RDG" = c("PAX6", "SLC1A3", "PDGFD", "GLI3", "NOTCH3", "VCAM1", "HES5", "CDH4", "SPRY1", "AXIN2", "SOX2", "VIM", "NES")
+#     )
+
+cellmarkers <- list(
+    "Astrocytes" = c("GFAP", "ALDH1L1", "S100B", "SLC1A2", "ACSL6", "AGT"),
+    "Oligodendrocytes" = c("MBP", "MOG", "CLDN14", "NIPAL4", "PLP1", "ERMN", "CLDN14", "KLK6", "EML1"),
+    "Oligodendrocyte progenitors" = c("PDGFRA", "ALDOC", "OLIG1", "EPN2", "NEU4", "NKX6-2", "SOX10", "FYN"),
+    "Microglia" = c("RGS10", "DLEU7", "CD40", "CD68", "ITGAM", "CX3CR1", "TMEM119"),
+    "Ependymal" = c("LIAS", "SPAG6", "CFAP54", "FOXJ1", "RSPH1", "CCDC153"),
+    "Neuroblasts" = c("DCX", "NEUROG1", "NCAM1", "NEUROD1"),
+    "Neurons (general)" = c("DISP2", "PRPH", "CNTNAP2", "RBFOX3", "NEFM", "NRGN", "SGIP1", "ENO2"),
+    "GABA" = c("GAD1", "GAD2", "SLC6A1", "SLC32A1", "DLX1", "GABBR2", "GADD45B", "PAX2"),
+    "Glutamatergic" = c("SLC17A6", "SLC17A7", "SLC17A8"),
+    "Cycling" = c("TOP2A", "MKI67", "AURKA"),
+    "IPC" = c("EOMES", "HES6", "NEUROD4"),
+    "RDG" = c("PAX6", "SLC1A3", "PDGFD", "GLI3", "NOTCH3", "VCAM1", "HES5", "CDH4", "SPRY1", "AXIN2", "SOX2", "VIM", "NES")
+)
+  
+```
+
+```{r add_expression_score}
+for (x in names(cellmarkers)) {
+  snrna.data <- AddModuleScore(
+    snrna.data,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+unint_feat_1 <- FeaturePlot(snrna.data, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap_unintegrated", 
+                            keep.scale = "all", 
+                            min.cutoff = 0,
+                            max.cutoff = 4,
+                            order = TRUE) + plot_layout(guides = "collect") &
+  theme(legend.position='bottom')
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/unintegrated/tumors/unint_features.png"), unint_feat_1, height = 12, width = 16, units = "in")
+
+#Maybe plot nec vs rdg on the rdg clusters??
+
+
+snrna.data <- JoinLayers(snrna.data) 
+
+unintegrated_feat <- FeaturePlot(snrna.data, 
+                            features =  paste0(names(cellmarkers),"1"), ncol = 4, 
+                            reduction = "umap_unintegrated", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0,
+  limits = c(-1, 4)
+) 
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/unintegrated/tumors/celltype_plots.png"), unintegrated_feat,height = 8, width = 14, units = "in")
+
+separate_plots_unint <- FeaturePlot(snrna.data, 
+                            features =  paste0(names(cellmarkers),"1"), 
+                            reduction = "umap_unintegrated", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, split.by= "Tumor_Type") & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0,
+  limits = c(-1, 4)
+  
+) 
+
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/unintegrated/tumors/celltype_plots_sep.png"), separate_plots_unint,height = 22, width = 6, units = "in")
+
+```
+
+```{r calculate_average_expression}
+
+unint_marks <- FindAllMarkers(snrna.data, group.by = "unintegrated_clusters", only.pos = TRUE)
+
+unint_marks_list <- unint_marks |>
+  dplyr::group_by(cluster) |>
+  dplyr::arrange(desc(avg_log2FC), .by_group=TRUE
+          ) |>
+  dplyr::filter(pct.1 >= .25) |>
+  dplyr::group_split() 
+
+
+celltype_markers <- unint_marks[unlist(cellmarkers),] |>
+  dplyr::ungroup() |>
+  dplyr::arrange(cluster) 
+
+gene_to_celltype <- unlist(split(
+  rep(names(cellmarkers), lengths(cellmarkers)),
+  unlist(cellmarkers))
+)
+
+celltype_markers |>
+  group_by(cluster) |>
+  arrange(desc(avg_log2FC), .by_group=TRUE
+          )
+
+celltype_markers <- celltype_markers %>%
+  dplyr::mutate(celltype = gene_to_celltype[gene])
+
+sel_marks <- unint_marks |>
+  dplyr::filter((pct.1 >= .25 | pct.2 >= .25) & avg_log2FC >= .5)
+
+View(sel_marks)
+
+```
+
+```{r}
+
+pb <- AggregateExpression(
+  snrna.data,
+  group.by = c("unintegrated_clusters", "orig.ident"),
+  assays = "RNA",
+  slot = "counts",
+  return.seurat = TRUE
+)
+
+Idents(pb) <- "unintegrated_clusters"
+
+clus_markers_pse_5 <- FindMarkers(
+  pb,
+  ident.1 = "g5",
+  test.use = "wilcox",
+  assay = "RNA",
+  logfc.threshold = 0,
+  only.pos = TRUE,
+  min.diff.pct = 0.25
+)
+
+clus_markers_pse_5 |>
+  arrange(desc(avg_log2FC)) |>
+  View()
+
+clus_markers_pse_14 <- FindMarkers(
+  pb,
+  ident.1 = "g14",
+  test.use = "wilcox",
+  assay = "RNA",
+  logfc.threshold = 0,
+  only.pos = TRUE,
+  min.diff.pct = 0.25
+) #microglia
+
+clus_markers_pse_14 |>
+  arrange(desc(avg_log2FC)) 
+
+
+clus_markers_pse_16 <- FindMarkers(
+  pb,
+  ident.1 = "g16",
+  test.use = "wilcox",
+  assay = "RNA",
+  logfc.threshold = 0,
+  only.pos = TRUE,
+  min.diff.pct = 0.25
+)
+
+clus_markers_pse_16 |>
+  arrange(desc(avg_log2FC)) #vasculature
+
+```
+
+```{r}
+celltype_unint <- c(
+                  "1"= "RDC-cycling",
+                  "2"= "Neuroblasts",
+                  "3"= "RDC-cycling",
+                  "4"= "Neuroblasts",
+                  "5"= "IPC", 
+                  "6"= "RDC-cycling",
+                  "7"= "RDC-cycling",
+                  "8"= "Neuroblasts",
+                  "9"= "RDC-cycling",
+                  "10"= "Neuroblasts",
+                  "11"= "Astrocytes",
+                  "12"= "IPC",
+                  "13"="Neuroblasts",
+                  "14"="Microglia",
+                  "15"="RDC-cycling",
+                  "16"= "RDC-cycling",
+                  "17"= "RDC-cycling",
+                  "18"="Oligodendrocytes",
+                  "19"= "Neuroblasts"
+                  )
+
+
+snrna.data@meta.data["celltype"]  <- celltype_unint[as.character(Idents(snrna.data))]
+
+celltype_plot_unint <- DimPlot(snrna.data,
+        reduction = "umap_unintegrated",
+        group.by = "celltype",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("Unintegrated cell type")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/unintegrated/tumors/celltype_plots_annotated.png"), celltype_plot_unint,height = 6, width = 10, units = "in")
+
+
+unint_umapdf <- snrna.data@meta.data |>
+  select(orig.ident, unintegrated_clusters, Tumor_Type, celltype) |>
+  rownames_to_column("cell")
+
+unint_hist_celltype <- plot_hist(unint_umapdf, "celltype", "Tumor_Type") + labs(title = "Cell Type", fill = "Cell Type")
+
+celltypes_unint <- celltype_plot_unint + unint_hist_celltype 
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/unintegrated/tumors/celltype_plot_hist.png"), celltypes_unint, height = 6, width = 12, units = "in")
+
+
+```
+
+## Integration
+
+### MNN
+
+```{r mnn, warning=FALSE}
+library(SeuratWrappers)
+source("~/Projects/etmr/defaria/scripts/functions.R")
+snrna.data <- readRDS(paste0(here::here(), "/defaria/snRNA/data/combined_fixed_tumors_raw.rds"))
+
+split_snrna <- SplitObject(snrna.data, split.by = "orig.ident")
+split_snrna <- lapply(split_snrna, function(x) {
+  x[["percent.mt"]] <- PercentageFeatureSet(x, pattern = "^MT-")
+  x <- subset(x, subset = nFeature_RNA > 200 & nFeature_RNA < 6000 & nCount_RNA < 40000 & percent.mt < 15)
+  x <- NormalizeData(x, normalization.method = "LogNormalize", scale.factor = 10000)
+  x <- FindVariableFeatures(x, selection.method = "vst")
+  x <- ScaleData(x, verbose = FALSE)
+  return(x)
+})
+
+split_snrna <- RunFastMNN(object.list = split_snrna, reduction.name = "integrated.mnn")
+
+split_snrna <- RunUMAP(split_snrna, reduction = "integrated.mnn", dims = 1:30, reduction.name = "mnn.umap", return.model = TRUE)
+split_snrna <- FindNeighbors(split_snrna, reduction = "integrated.mnn", dims = 1:30)
+split_snrna <- FindClusters(split_snrna, cluster.name	= "mnn_clusters", resolution = 1.8, random.seed = 2026, algorithm = 4)
+
+```
+
+```{r}
+ 
+split_snrna@meta.data$mnn_clusters <- as.factor(as.numeric(split_snrna@meta.data$mnn_clusters))
+
+clus_mnn <- DimPlot(split_snrna,
+        reduction = "mnn.umap",
+        group.by = "mnn_clusters",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6) + ggtitle("Leiden clusters resolution 1.8")
+
+
+id_mnn <- DimPlot(split_snrna,
+        reduction = "mnn.umap",
+        group.by = "orig.ident",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("Sample ID")
+
+
+mutation_mnn <- DimPlot(split_snrna,
+        reduction = "mnn.umap",
+        group.by = "Tumor_Type",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("Tumor mutation")
+
+
+mnn_patch <- id_mnn / mutation_mnn / clus_mnn + plot_annotation(title = "Integrated UMAP: MNN")
+
+
+```
+
+```{r}
+mnn_umapdf <- split_snrna@meta.data |>
+  select(orig.ident, mnn_clusters, Tumor_Type) |>
+  rownames_to_column("cell")
+
+mnn_hist_id <- plot_hist(mnn_umapdf, "mnn_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+mnn_hist_mut <- plot_hist(mnn_umapdf, "mnn_clusters", "Tumor_Type") + labs(title = "Mutation", fill = "Mutation")
+
+mnn_id_pct <- mnn_umapdf |>
+  dplyr::count(mnn_clusters, orig.ident) |>
+  group_by(mnn_clusters) |>
+  mutate(percentage = n / sum(n) * 100)
+
+mnn_mut_pct <- mnn_umapdf |>
+  dplyr::count(mnn_clusters, Tumor_Type) |>
+  group_by(mnn_clusters) |>
+  mutate(percentage = round(n / sum(n) * 100,2)) 
+
+dicer_sel_clus_mnn <- mnn_mut_pct |>
+  dplyr::filter(Tumor_Type == "Dicer" & 75 > percentage & percentage >= 25) |>
+  ungroup() |>
+  dplyr::rename() |>
+  gt(groupname_col = "Tumor_Type",
+    row_group_as_column = TRUE) |>
+  cols_label(
+    mnn_clusters = "Cluster",
+    n = "# of cells",
+    percentage = "Percentage"
+  ) |>
+  tab_style(
+    style = list(
+      cell_fill(color = "lightcyan"),
+      "font-variant: small-caps;",
+      cell_text(v_align = "middle")
+    ),
+    locations = cells_row_groups()
+  ) |>
+  tab_header(
+    title = "Selected clusters",
+    subtitle = "Leiden clustering on MNN-corrected data (res = 1.8)"
+  )
+
+mnn_plots <- ((id_mnn + theme(legend.position = "none", plot.title=element_blank())) + 
+    (mnn_hist_id + theme(plot.title=element_blank()))) /
+  ((mutation_mnn + theme(legend.position = "none", plot.title=element_blank())) + 
+     (mnn_hist_mut + theme(plot.title=element_blank())))/
+  ((clus_mnn + theme( plot.title=element_blank())) + dicer_sel_clus_mnn) + plot_annotation(title = "Integrated: MNN")
+
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_plots.png"), mnn_plots,height = 16, width = 14, units = "in")
+```
+
+```{r mnn_markers}
+cellmarkers <- list(
+    "Astrocytes" = c("GFAP", "ALDH1L1", "S100B", "SLC1A2", "ACSL6", "AGT"),
+    "Oligodendrocytes" = c("MBP", "MOG", "CLDN14", "NIPAL4", "PLP1", "ERMN", "CLDN14", "KLK6", "EML1"),
+    "Oligodendrocyte progenitors" = c("PDGFRA", "ALDOC", "OLIG1", "EPN2", "NEU4", "NKX6-2", "SOX10", "FYN"),
+    "Microglia" = c("RGS10", "DLEU7", "CD40", "CD68", "ITGAM", "CX3CR1", "TMEM119"),
+    "Ependymal" = c("LIAS", "SPAG6", "CFAP54", "FOXJ1", "RSPH1", "CCDC153"),
+    "Neuroblasts" = c("DCX", "NEUROG1", "NCAM1", "NEUROD1"),
+    "Neurons (general)" = c("DISP2", "PRPH", "CNTNAP2", "RBFOX3", "NEFM", "NRGN", "SGIP1", "ENO2", "PAX2"),
+    "GABA" = c("GAD1", "GAD2", "SLC6A1", "SLC32A1", "DLX1", "GABBR2", "GADD45B"),
+    "Glutamatergic" = c("SLC17A6", "SLC17A7", "SLC17A8"),
+    "Cycling" = c("TOP2A", "MKI67", "AURKA"),
+    "IPC" = c("EOMES", "HES6", "NEUROD4"),
+    "RDG" = c("PAX6", "SLC1A3", "PDGFD", "GLI3", "NOTCH3", "VCAM1", "HES5", "CDH4", "SPRY1", "AXIN2", "SOX2", "VIM", "NES")
+)
+
+split_snrna <- JoinLayers(split_snrna)
+
+```
+
+```{r, warning=FALSE}
+for (x in names(cellmarkers)) {
+  split_snrna <- AddModuleScore(
+    split_snrna,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+mnn_type_long <- split_snrna@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    mnn_clusters, 
+    paste0(names(cellmarkers),"1")
+    ) |>
+  pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              mnn_clusters), names_to = "cell_type"
+    )
+  
+violin_mnn <- mnn_type_long |>
+  ggplot(aes(x = mnn_clusters, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type))
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_celltype_violin.png"), violin_mnn,height = 10, width = 12, units = "in")
+
+mnn_feat_origcol <- FeaturePlot(split_snrna, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 3, 
+                            reduction = "mnn.umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_celltype_plots_origcol.png"), mnn_feat_origcol,height = 10, width = 12, units = "in")
+
+mnn_feat <- FeaturePlot(split_snrna, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 3, 
+                            reduction = "mnn.umap", 
+                            keep.scale = "feature", 
+                            order = TRUE,
+  pt.size = .2) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0,
+  limits = c(-1, 4)) 
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_celltype_plots.png"), mnn_feat,height = 12, width = 12, units = "in")
+
+separate_plots_mnn <- FeaturePlot(split_snrna, 
+                            features = paste0(names(cellmarkers),"1"), 
+                            reduction = "mnn.umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, split.by= "Tumor_Type", ncol = 4) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0,
+  limits = c(-1, 4)
+) 
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_celltype_plots_sep.png"), separate_plots_mnn,height = 24, width = 6, units = "in")
+
+```
+
+```{r celltype_plot}
+
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+#APOE can be expressed in microglia in disease
+celltype_mnn <- c(
+                  "1"= "RGC",
+                  "2"= "Neuroblasts",
+                  "3"= "RGC",
+                  "4"= "RGC-cycling",
+                  "5"= "RGC", 
+                  "6"= "RGC",
+                  "7"= "Neuroblasts/Neurons",
+                  "8"= "RGC-cycling",
+                  "9"= "Neuroblasts",
+                  "10"= "Neuroblasts",
+                  "11"= "Neuroblasts",
+                  "12"= "RGC",
+                  "13"= "Neuroblasts",
+                  "14"= "RGC",
+                  "15"= "Neuroblasts",
+                  "16"= "Neuroblasts",
+                  "17"= "Neuroblasts",
+                  "18"= "Astrocytes",
+                  "19"= "IPC",
+                  "20"= "RGC",
+                  "21"= "RGC",
+                  "22"= "Microglia",
+                  "23"= "RGC-cycling",
+                  "24"= "IPC",
+                  "25"= "Oligodendrocytes",
+                  "26"= "RGC"
+                  )
+
+Idents(split_snrna) <- "mnn_clusters"
+
+split_snrna@meta.data["celltype_mnn"]  <- celltype_mnn[as.character(Idents(split_snrna))]
+
+celltype_plot_mnn <- DimPlot(split_snrna,
+        reduction = "mnn.umap",
+        group.by = "celltype_mnn",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("MNN cell type")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_celltype_plots_annotated.png"), celltype_plot_mnn,height = 6, width = 10, units = "in")
+
+mnn_umapdf <- split_snrna@meta.data |>
+  dplyr::select(orig.ident, mnn_clusters, Tumor_Type, celltype_mnn) |>
+  rownames_to_column("cell")
+
+mnn_hist_celltype <- plot_hist(mnn_umapdf, "Tumor_Type", "celltype_mnn") + labs(title = "Mutation", fill = "Cell Type")
+
+
+mnn_umapdf |>
+  dplyr::count(celltype_mnn, Tumor_Type) |>
+  dplyr::group_by(celltype_mnn) |>
+  dplyr::mutate(percentage = n / sum(n) * 100)
+
+ages <-  c(
+  "GSM8058157"= 48, 
+  "GSM8058158" = 12, 
+  "GSM8058159" = 12, 
+  "GSM8058160" = 34, 
+  "GSM8058161" = 30,
+  "GSM8058162" = 29,
+  "GSM8058163" = 31.2,
+  "GSM8058164" = 35,
+  "GSM8058165" = 39.6
+  )
+
+mnn_umapdf["Age (months)"] <- ages[mnn_umapdf$orig.ident]
+
+mnn_umapdf <- mnn_umapdf |> mutate(orig.ident = paste0(orig.ident, " (",Tumor_Type, ")"))
+
+order_df <- mnn_umapdf %>%
+  distinct(orig.ident, `Age (months)`) %>%
+  arrange(`Age (months)`)
+
+mnn_umapdf$orig.ident <- factor(mnn_umapdf$orig.ident,
+                        levels = order_df$orig.ident)
+
+mnn_hist_celltype_id <- plot_hist(mnn_umapdf, "orig.ident", "celltype_mnn") + labs(title = "Sample ID", fill = "Cell Type")
+
+celltypes_mnn <- (celltype_plot_mnn + theme(legend.position = "none")) | (mnn_hist_celltype_id  + theme(legend.position = "none")) | (mnn_hist_celltype  + theme(legend.position = "left")) & plot_layout(guides = "collect")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_celltype_plot_hist.png"), celltypes_mnn, height = 6, width = 12, units = "in")
+
+
+
+```
+
+##### Interesting genes
+
+```{r plot_int_features, eval=FALSE}
+interesting_genes <- c(
+  "AURKB",
+  "AURKA",
+  "PAX6",
+  "SOX2",
+  "HES5",
+  "HES1",
+  "INSM1",
+  "NEUROG2",
+  "NEUROD1",
+  "ROBO1",
+  "CUX2"
+)
+FeaturePlot(split_snrna, features = interesting_genes, order = TRUE)
+
+f1 <- FeaturePlot(split_snrna, features = "AURKB", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "AURKB expression per tumor")
+
+f2 <- FeaturePlot(split_snrna, features = "AURKA", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "AURKA expression per tumor")
+
+f3 <- FeaturePlot(split_snrna, features = "PAX6", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "PAX6 expression per tumor")
+
+f4 <- FeaturePlot(split_snrna, features = "SOX2", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "SOX2 expression per tumor")
+
+f5 <- FeaturePlot(split_snrna, features = "HES5", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "HES5 expression per tumor")
+
+f6 <- FeaturePlot(split_snrna, features = "HES1", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "HES1 expression per tumor")
+
+f7 <- FeaturePlot(split_snrna, features = "INSM1", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "INSM1 expression per tumor")
+
+f8 <- FeaturePlot(split_snrna, features = "NEUROG2", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "NEUROG2 expression per tumor")
+
+f9 <- FeaturePlot(split_snrna, features = "NEUROD1", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "NEUROD1 expression per tumor")
+
+f10 <- FeaturePlot(split_snrna, features = "ROBO1", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "ROBO1 expression per tumor")
+
+f11 <- FeaturePlot(split_snrna, features = "CUX2", split.by = "orig.ident", order = TRUE, keep.scale = "all") + 
+  plot_layout(ncol = 3, nrow = 3) + plot_annotation(title = "CUX2 expression per tumor")
+
+f_list <- setNames(list(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11), interesting_genes)
+
+base_path <- here::here("defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn")
+
+f_list <- list("AURKB" = f1)
+
+for (name in names(f_list)) {
+  ggsave(
+    filename = file.path(base_path, paste0("mnn_", name, ".png")),
+    plot = f_list[[name]],
+    height = 8,
+    width = 10,
+    units = "in"
+  )
+}
+
+```
+
+```{r other_int_genes}
+etmr_sig_pos <- c("ABCB5",
+                  "ACRV1",
+                  "ACVR2A",
+                  "ACVR2B",
+                  "ADAM7",
+                  "AGO1",
+                  "AGPS",
+                  "APELA",
+                  "BLTP3A",
+                  "C16orf82",
+                  "C22orf42",
+                  "CALHM4",
+                  "CBX2",
+                  "CCDC150",
+                  "CCNE1",
+                  "CCNJ",
+                  "CCNT2",
+                  "CDC25A",
+                  "CDC7",
+                  "CHAC2",
+                  "CHRNA5",
+                  "CHRNB4",
+                  "CRABP1",
+                  "CRYGC",
+                  "CSAG2",
+                  "CSAG3",
+                  "CTCFL",
+                  "CTPS1",
+                  "CXXC4",
+                  "CYP27C1",
+                  "DAAM1",
+                  "DEPDC1B",
+                  "DIS3L2",
+                  "DNA2",
+                  "DNMT3B",
+                  "DTX4",
+                  "EPB41",
+                  "EVX2",
+                  "EXOSC7",
+                  "FAM161A",
+                  "FANCD2OS",
+                  "FIGNL2",
+                  "FOXB1",
+                  "GABRR1",
+                  "GATA3",
+                  "GBX1",
+                  "GJC1",
+                  "GPR20",
+                  "GREB1",
+                  "GREB1L",
+                  "H1-2",
+                  "H2BC11",
+                  "H2BC26",
+                  "H2BC9",
+                  "H3C15",
+                  "HCRTR2",
+                  "HELLS",
+                  "HES5",
+                  "HIC2",
+                  "HMX2",
+                  "HOXA1",
+                  "HOXA3",
+                  "HOXB1",
+                  "HRC",
+                  "IDH1",
+                  "IGF2BP1",
+                  "INSM2",
+                  "KCNH8",
+                  "KLHL23",
+                  "KPNA2",
+                  "LBX1",
+                  "LCOR",
+                  "LIN28A",
+                  "LIN28B",
+                  "MAGEA10",
+                  "MAGEA12",
+                  "MAGEA2B",
+                  "MAGEA3",
+                  "MAGEA6",
+                  "MBTD1",
+                  "MEIS1",
+                  "MSH2",
+                  "MTF2",
+                  "MTTP",
+                  "NDST4",
+                  "NEUROG3",
+                  "NHEJ1",
+                  "NKX1-1",
+                  "NKX1-2",
+                  "NKX6-3",
+                  "NPPC",
+                  "NR6A1",
+                  "NSD2",
+                  "NUP210",
+                  "NUP62CL",
+                  "ONECUT1",
+                  "ORC1",
+                  "OTP",
+                  "P2RX3",
+                  "PAPOLG",
+                  "PBX2",
+                  "PDE7A",
+                  "PGAP1",
+                  "PHF6",
+                  "PHOX2B",
+                  "PIK3C2B",
+                  "PLEKHA8",
+                  "PMFBP1",
+                  "POLQ",
+                  "POTEE",
+                  "POTEF",
+                  "POTEI",
+                  "PRDM12",
+                  "PRDM13",
+                  "PRDM5",
+                  "PRIM1",
+                  "PRTG",
+                  "PTBP2",
+                  "RAD54L2",
+                  "RALGPS2",
+                  "RARB",
+                  "RASAL2",
+                  "RNF152",
+                  "RPS6KA6",
+                  "RRM2",
+                  "RTKN2",
+                  "SALL4",
+                  "SANBR",
+                  "SCML2",
+                  "SCML4",
+                  "SCN11A",
+                  "SCUBE3",
+                  "SEMG2",
+                  "SERTM2",
+                  "SESTD1",
+                  "SFRP2",
+                  "SHISA3",
+                  "SINHCAF",
+                  "SMARCC1",
+                  "SOX11",
+                  "SOX14",
+                  "SOX3",
+                  "SP8",
+                  "SPSB4",
+                  "SRPK1",
+                  "STK26",
+                  "STRBP",
+                  "SUV39H2",
+                  "TIA1",
+                  "TMC4",
+                  "TRIM71",
+                  "TSGA10IP",
+                  "ULBP3",
+                  "USP44",
+                  "VSX2",
+                  "WNT7A",
+                  "ZBTB39",
+                  "ZFHX3",
+                  "ZNF439",
+                  "ZNF462",
+                  "ZNF48",
+                  "ZNF608",
+                  "ZNF620",
+                  "ZNF71")
+
+nec <- c("MDK",
+         "MIF",
+         "AC090498.1",
+         "PSMA4",
+         "SMS",
+         "HSPA5",
+         "RANBP1",
+         "TPM1",
+         "IGFBP2",
+         "PFN1",
+         "OSTC",
+         "HMGA1",
+         "LAPTM4A",
+         "MYL12A",
+         "PDIA6",
+         "PRELID1",
+         "ARF4",
+         "OCIAD2",
+         "MAD2L1",
+         "PDIA3",
+         "KPNA2",
+         "AKR1B1",
+         "EIF4E",
+         "TMED9",
+         "MRPL42")
+
+nec2 <- c(
+  "ID3",
+  "PRTG",
+  "WNT8B"
+)
+
+
+
+```
+
+```{r other_cellmarkers}
+cellmarkers2 <- list(ETMR = etmr_sig_pos[etmr_sig_pos %in% Features(split_snrna)],
+                     NEUROEPITHELIAL = nec[nec %in% Features(split_snrna)])
+
+for (x in names(cellmarkers2)) {
+  split_snrna <- AddModuleScore(
+    split_snrna,
+    features = cellmarkers2[x],
+    name = x
+  )
+}
+
+mnn_feat_origcol <- FeaturePlot(split_snrna, 
+                            features = paste0(names(cellmarkers2),"1"), ncol = 3, 
+                            reduction = "mnn.umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+
+mnn_type_long <- split_snrna@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    mnn_clusters, 
+    paste0(names(cellmarkers),"1"),
+    paste0(names(cellmarkers2),"1")
+    ) |>
+  pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              mnn_clusters), names_to = "cell_type"
+    )
+  
+violin_mnn2 <- mnn_type_long |>
+  dplyr::filter(cell_type %in% c(paste0(names(cellmarkers2), "1"))) |>
+  ggplot(aes(x = mnn_clusters, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type))
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_celltype_violin2.png"), violin_mnn2,height = 8, width = 10, units = "in")
+
+
+```
+
+#### Saving data
+
+```{r save_integration}
+saveRDS(split_snrna, paste0(here::here(), "/defaria/snRNA/data/mnn_corrected_combined.rds"))
+```
+
+#### Aggregate expression
+
+```{r}
+
+split_snrna <- readRDS(paste0(here::here(), "/defaria/snRNA/data/mnn_corrected_combined.rds"))
+
+order_tumors <- c(
+                  "GSM8058163",
+                  "GSM8058161",
+                  "GSM8058158",
+                  "GSM8058164",
+                  "GSM8058159",
+                  "GSM8058160",
+                  "GSM8058157",
+                  "GSM8058162",
+                  "GSM8058165"
+                  )
+
+split_snrna@meta.data$orig.ident <- factor(split_snrna@meta.data$orig.ident,
+                                           levels = order_tumors)
+
+clus_mnn_split <- DimPlot(split_snrna,
+        reduction = "mnn.umap",
+        group.by = "mnn_clusters",
+        split.by = "orig.ident",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6,
+        ncol = 3) + ggtitle("Leiden clusters resolution 1.8")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/clus_mnn_split.png"), clus_mnn_split,height = 12, width = 14, units = "in")
+
+
+split_snrna$cluster_group <-
+case_when(
+  Idents(split_snrna) %in% c(23, 12, 2) ~ "lower_group",
+  Idents(split_snrna) %in% c(24, 19, 10, 13, 16, 17) ~ "upper_group",
+  Idents(split_snrna) %in% c(7, 9, 15) ~ "left_group",
+  Idents(split_snrna) %in% c(1, 3, 4, 5, 6, 8, 14) ~ "right_group",
+  TRUE ~ "excluded"
+)
+
+
+#Is this right??
+group_mnn <- AggregateExpression(
+  split_snrna,
+  group.by = c("cluster_group","orig.ident"),
+  assays = "RNA",
+  slot = "counts",
+  return.seurat = TRUE
+)
+
+```
+
+#### DEG
+
+##### By group
+
+Remember:
+
+log2FoldChange \> 0 → higher in lower-group log2FoldChange \< 0 → higher in upper-group
+
+```{r deg_lower_vs_upper}
+library(DESeq2)
+
+group_mnn@meta.data$orig.ident <- factor(gsub(".*_(GSM[0-9]+)", "\\1", group_mnn@meta.data$orig.ident))
+
+counts_group_mnn <- GetAssayData(group_mnn, layer = "counts")
+
+coldata_group_mnn <- group_mnn@meta.data
+coldata_group_mnn$cluster_group <- factor(coldata_group_mnn$cluster_group)
+
+
+dds_group_mnn <- DESeqDataSetFromMatrix(
+  countData = counts_group_mnn,
+  colData = coldata_group_mnn,
+  design = ~ orig.ident + cluster_group 
+)
+
+dds_group_mnn <- DESeq(dds_group_mnn)
+
+res_lower_vs_upper_mnn <- results(
+  dds_group_mnn,
+  contrast = c("cluster_group", "lower-group", "upper-group")
+)
+
+res_lower_vs_upper_mnn <- res_lower_vs_upper_mnn[!is.na(res_lower_vs_upper_mnn$stat), ]
+
+# Create ranked vector (Wald statistic is commonly used)
+gene_list_lower_vs_upper <- res_lower_vs_upper_mnn$stat
+names(gene_list_lower_vs_upper) <- rownames(res_lower_vs_upper_mnn)
+
+# Sort decreasing
+gene_list_lower_vs_upper <- sort(gene_list_lower_vs_upper, decreasing = TRUE)
+
+
+res_lower_vs_upper_mnn_sig <- res_lower_vs_upper_mnn[which(res_lower_vs_upper_mnn$padj < 0.05), ]
+res_lower_vs_upper_mnn_sig <- res_lower_vs_upper_mnn_sig[order(res_lower_vs_upper_mnn_sig$padj), ]
+
+
+res_lower_vs_upper_mnn_sig <- as.data.frame(res_lower_vs_upper_mnn_sig) |>
+  rownames_to_column("Gene") |>
+  dplyr::select(-pvalue) |>
+  dplyr::arrange("stat") |>
+  gt() |>
+  fmt_number(
+    columns = where(is.numeric),
+    decimals = 2
+  )  |>
+  fmt(
+    columns = padj,
+    fns = function(x) {
+      dplyr::case_when(
+        x < 0.001 ~ "< .001",
+        x < 0.01  ~ "< .01",
+        x < 0.05  ~ "< .05",
+        TRUE      ~ sprintf("%.2f", x)
+      )
+    }
+  ) |>
+  tab_style(
+    style = list(
+      cell_fill(color = "lightcyan"),
+      "font-variant: small-caps;",
+      cell_text(v_align = "middle")
+    ),
+    locations = cells_body(columns = Gene)
+  ) |>
+  tab_header(
+    title = "2_12_23 vs 24_19_10_13_16_17",
+    subtitle = "Genes that differentiate cluster groups"
+  )
+
+gtsave( res_lower_vs_upper_mnn_sig, paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/res_lower_vs_upper_mnn_sig.html"))
+```
+
+##### By cluster
+
+This means:
+
+The stat column in DESeq2 output is the Wald statistic (by default), essentially:
+
+*stat = log2FoldChange / standard error*
+
+*"Intercept"* → baseline expression (not a comparison; ignore for differential interpretation) *Positive stat / log2FC* → higher expression in A than B *Negative stat / log2FC* → lower expression in A than B
+
+```{r only_rgc}
+
+rgc_clusts <- subset(split_snrna, subset = celltype_mnn == "RGC")
+
+clus_mnn <- AggregateExpression(
+  rgc_clusts,
+  group.by = c("mnn_clusters","orig.ident"),
+  assays = "RNA",
+  slot = "counts",
+  return.seurat = TRUE
+)
+
+clus_mnn@meta.data$orig.ident <- factor(gsub(".*_(GSM[0-9]+)", "\\1", clus_mnn@meta.data$orig.ident))
+
+
+counts_clus_mnn <- GetAssayData(clus_mnn, layer = "counts")
+coldata_clus_mnn <- clus_mnn@meta.data
+coldata_clus_mnn$cluster_group <- factor(coldata_clus_mnn$mnn_clusters)
+
+```
+
+```{r compare_clus_21}
+
+coldata_clus_mnn$g21 <- ifelse(coldata_clus_mnn$mnn_clusters == "g21", "g21", "rest")
+
+coldata_clus_mnn$g21 <- factor(coldata_clus_mnn$g21, levels = c("rest", "g21"))
+
+dds_clus_mnn <- DESeqDataSetFromMatrix(
+  countData = counts_clus_mnn,
+  colData = coldata_clus_mnn,
+  design = ~ orig.ident + g21
+)
+
+dds_clus_mnn <- DESeq(dds_clus_mnn)
+
+resultsNames(dds_clus_mnn)
+
+g21_res <- results(dds_clus_mnn, name = "g21_g21_vs_rest", tidy = TRUE)
+
+View(g21_res)
+
+```
+
+```{r}
+
+coldata_clus_mnn$g20 <- ifelse(coldata_clus_mnn$mnn_clusters == "g20", "g20", "rest")
+
+coldata_clus_mnn$g20 <- factor(coldata_clus_mnn$g20, levels = c("rest", "g20"))
+
+dds_clus_mnn <- DESeqDataSetFromMatrix(
+  countData = counts_clus_mnn,
+  colData = coldata_clus_mnn,
+  design = ~ orig.ident + g20
+)
+
+dds_clus_mnn <- DESeq(dds_clus_mnn)
+
+resultsNames(dds_clus_mnn)
+
+g20_res <- results(dds_clus_mnn, name = "g20_g20_vs_rest", tidy = TRUE)
+
+View(g20_res)
+
+```
+
+```{r g20_and_g21}
+
+coldata_clus_mnn <- clus_mnn@meta.data
+coldata_clus_mnn$cluster_group <- factor(coldata_clus_mnn$mnn_clusters)
+coldata_clus_mnn$g20_g21 <- ifelse(coldata_clus_mnn$mnn_clusters %in% c("g20", "g21"), "g20_g21", "rest")
+
+coldata_clus_mnn$g20_g21 <- factor(coldata_clus_mnn$g20_g21, levels = c("rest", "g20_g21"))
+
+dds_clus_mnn <- DESeqDataSetFromMatrix(
+  countData = counts_clus_mnn,
+  colData = coldata_clus_mnn,
+  design = ~ orig.ident + g20_g21
+)
+
+dds_clus_mnn <- DESeq(dds_clus_mnn)
+
+resultsNames(dds_clus_mnn)
+
+g20_g21_res <- results(dds_clus_mnn, name = "g20_g21_g20_g21_vs_rest", tidy = TRUE)
+
+g20_g21_res <- g20_g21_res[!is.na(g20_g21_res$log2FoldChange) & !is.na(g20_g21_res$pvalue), ]
+
+View(g20_g21_res)
+
+```
+
+#### GSEA
+
+```{r lower_vs_upper_gsea}
+library(clusterProfiler)
+library(org.Hs.eg.db)  
+
+gene_df_lower_vs_upper <- bitr(names(gene_list_lower_vs_upper),
+                fromType = "SYMBOL",
+                toType = "ENTREZID",
+                OrgDb = org.Hs.eg.db)
+
+# Merge with ranked list
+gene_list_entrez_lower_vs_upper <- gene_list_lower_vs_upper[gene_df_lower_vs_upper$SYMBOL]
+names(gene_list_entrez_lower_vs_upper) <- gene_df_lower_vs_upper$ENTREZID
+
+gene_list_entrez_lower_vs_upper <- sort(gene_list_entrez_lower_vs_upper, decreasing = TRUE)
+
+gsea_res_lower_vs_upper <- gseGO(
+  geneList = gene_list_entrez_lower_vs_upper,
+  OrgDb = org.Hs.eg.db,
+  ont = "BP",
+  minGSSize = 10,
+  maxGSSize = 500,
+  pvalueCutoff = 0.05,
+  verbose = FALSE,
+  nPermSimple = 100000,
+  eps = 0
+)
+
+gsea_res_lower_vs_upper_kegg <- gseKEGG(geneList = gene_list_entrez_lower_vs_upper,
+              organism     = 'hsa',
+              minGSSize    = 120,
+              pvalueCutoff = 0.05,
+              verbose      = FALSE,
+              nPermSimple = 100000,
+  eps = 0)
+
+library(ReactomePA)
+gsea_res_lower_vs_upper_react <- gsePathway(geneList = gene_list_entrez_lower_vs_upper,
+                          organism = "human",
+                          minGSSize = 15,
+                          maxGSSize = 500,
+                          eps = 0,
+                          nPermSimple = 100000,
+                          seed = TRUE)
+
+fgsea_res_lower_vs_upper <- fgsea(
+  pathways = gene_sets,
+  stats = gene_list_entrez_lower_vs_upper,
+  eps = 0,
+  nPermSimple = 10000
+  )
+
+fgsea_res_lower_vs_upper <- fgsea_res_lower_vs_upper %>%
+  mutate(direction = ifelse(NES > 0, "Upregulated", "Downregulated"))
+
+top_up_lower_vs_upper <- fgsea_res_lower_vs_upper %>%
+  filter(direction == "Upregulated") %>%
+  arrange(padj) %>%
+  head(10)
+
+top_down_lower_vs_upper <- fgsea_res_lower_vs_upper %>%
+  filter(direction == "Downregulated") %>%
+  arrange(padj) %>%
+  head(10)
+
+top_all_lower_vs_upper <- bind_rows(top_up_lower_vs_upper, top_down_lower_vs_upper)
+
+ggplot(top_all_lower_vs_upper, aes(x = NES, y = reorder(pathway, NES))) +
+  geom_col(aes(fill = NES > 0)) +
+  labs(x = "NES", y = "Pathway") +
+  scale_fill_manual(values = c("TRUE" = "steelblue", "FALSE" = "tomato")) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+topPathways_g20_g21 <- fgsea_res_g20_g21[head(order(pval), n=20)][order(NES), pathway]
+plotGseaTable(gene_sets[topPathways_g20_g21], gene_list_entrez_g20_g21,
+              fgsea_res_g20_g21, gseaParam=0.5)
+
+p1 <- dotplot(gsea_res_lower_vs_upper, x = "NES")
+
+p2 <- dotplot(gsea_res_lower_vs_upper_kegg, x = "NES")
+
+p3 <- dotplot(gsea_res_lower_vs_upper_react, x = "NES")
+
+enrichment_mnn <- (p1 + ggtitle("GO enrichment")) + 
+  (p2 + ggtitle("KEGG enrichment"))  + 
+  (p3 + ggtitle("Reactome enrichment"))  & plot_annotation(title = "Clusters 2 12 23 vs 24 19 10 13 16 17")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/enrichment_lower_mnn.png"), enrichment_mnn, height = 6, width = 24, units = "in")
+
+ridgeplot(gsea_res_lower_vs_upper_kegg)
+
+```
+
+| Phase | What’s happening | G2M checkpoint genes? |
+|----|----|----|
+| **G1** | Cell growth, decision to divide | low |
+| **S** | DNA replication | low–moderate (different programs dominate) |
+| **G2/M** | Final prep + mitosis | **high** |
+
+```{r gsea_g20}
+
+gene_list_g20 <- g20_res$stat
+names(gene_list_g20) <- g20_res$row
+
+# Sort decreasing
+gene_list_g20 <- sort(gene_list_g20, decreasing = TRUE)
+
+gene_df_g20 <- bitr(names(gene_list_g20),
+                fromType = "SYMBOL",
+                toType = "ENTREZID",
+                OrgDb = org.Hs.eg.db)
+
+# Merge with ranked list
+gene_list_entrez_g20 <- gene_list_g20[gene_df_g20$SYMBOL]
+names(gene_list_entrez_g20) <- gene_df_g20$ENTREZID
+
+gene_list_entrez_g20 <- sort(gene_list_entrez_g20, decreasing = TRUE)
+
+gsea_res_g20_go <- gseGO(
+  geneList = gene_list_entrez_g20,
+  OrgDb = org.Hs.eg.db,
+  ont = "BP",
+  minGSSize = 10,
+  maxGSSize = 500,
+  pvalueCutoff = 0.05,
+  verbose = FALSE,
+  nPermSimple = 1000000,
+  eps = 0
+)
+
+gsea_res_g20_kegg <- gseKEGG(geneList = gene_list_entrez_g20,
+              organism     = 'hsa',
+              minGSSize    = 120,
+              pvalueCutoff = 0.05,
+              verbose      = FALSE,
+              nPermSimple = 100000,
+  eps = 0)
+
+library(ReactomePA)
+gsea_res_g20_react <- gsePathway(geneList = gene_list_entrez_g20,
+                          organism = "human",
+                          minGSSize = 15,
+                          maxGSSize = 500,
+                          eps = 0,
+                          nPermSimple = 100000,
+                          seed = TRUE)
+
+p1 <- dotplot(gsea_res_g20, x = "NES")
+
+p2 <- dotplot(gsea_res_g20_kegg, x = "NES")
+
+p3 <- dotplot(gsea_res_g20_react, x = "NES")
+
+enrichment_mnn_g20 <- (p1 + ggtitle("GO enrichment")) + 
+  (p2 + ggtitle("KEGG enrichment"))  + 
+  (p3 + ggtitle("Reactome enrichment")) & plot_annotation(title = "Clusters 20 vs RGC")
+
+
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/enrichment_g20_mnn.png"), enrichment_mnn_g20, height = 6, width = 24, units = "in")
+```
+
+```{r gsea_g21}
+gene_list_g21 <- g21_res$stat
+names(gene_list_g21) <- g21_res$row
+
+# Sort decreasing
+gene_list_g21 <- sort(gene_list_g21, decreasing = TRUE)
+
+gene_df_g21 <- bitr(names(gene_list_g21),
+                fromType = "SYMBOL",
+                toType = "ENTREZID",
+                OrgDb = org.Hs.eg.db)
+
+# Merge with ranked list
+gene_list_entrez_g21 <- gene_list_g21[gene_df_g21$SYMBOL]
+names(gene_list_entrez_g21) <- gene_df_g21$ENTREZID
+
+gene_list_entrez_g21 <- sort(gene_list_entrez_g21, decreasing = TRUE)
+
+gsea_res_g21_go <- gseGO(
+  geneList = gene_list_entrez_g21,
+  OrgDb = org.Hs.eg.db,
+  ont = "BP",
+  minGSSize = 2,
+  maxGSSize = 500,
+  pvalueCutoff = 0.05,
+  verbose = FALSE,
+  nPermSimple = 100000,
+  eps = 0
+)
+
+gsea_res_g21_kegg <- gseKEGG(geneList = gene_list_entrez_g21,
+              organism     = 'hsa',
+              minGSSize    = 120,
+              pvalueCutoff = 0.05,
+              verbose      = FALSE,
+              nPermSimple = 100000,
+  eps = 0)
+
+library(ReactomePA)
+gsea_res_g21_react <- gsePathway(geneList = gene_list_entrez_g21,
+                          organism = "human",
+                          minGSSize = 2,
+                          maxGSSize = 7000,
+                          eps = 0,
+                          nPermSimple = 100000,
+                          seed = TRUE)
+
+p1 <- dotplot(gsea_res_g21_go, x = "NES")
+
+p2 <- dotplot(gsea_res_g21_kegg, x = "NES")
+
+p3 <- dotplot(gsea_res_g21_react, x = "NES")
+
+enrichment_mnn_g21 <- (p1 + ggtitle("GO enrichment")) + 
+  (p2 + ggtitle("KEGG enrichment"))  + 
+  (p3 + ggtitle("Reactome enrichment")) & plot_annotation(title = "Clusters 21 vs RGC")
+
+
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/enrichment_g21_mnn.png"), enrichment_mnn_g21, height = 6, width = 24, units = "in")
+```
+
+```{r g20_g21_gsea}
+
+library(msigdbr)
+library(fgsea)
+library(ReactomePA)
+
+gene_list_g20_g21 <- g20_g21_res$stat
+names(gene_list_g20_g21) <- g20_g21_res$row
+
+# Sort decreasing
+gene_list_g20_g21 <- sort(gene_list_g20_g21, decreasing = TRUE)
+
+gene_df_g20_g21 <- bitr(names(gene_list_g20_g21),
+                fromType = "SYMBOL",
+                toType = "ENTREZID",
+                OrgDb = org.Hs.eg.db)
+
+# Merge with ranked list
+gene_list_entrez_g20_g21 <- gene_list_g20_g21[gene_df_g20_g21$SYMBOL]
+names(gene_list_entrez_g20_g21) <- gene_df_g20_g21$ENTREZID
+
+gene_list_entrez_g20_g21 <- sort(gene_list_entrez_g20_g21, decreasing = TRUE)
+
+gsea_res_g20_g21_go <- gseGO(
+  geneList = gene_list_entrez_g20_g21,
+  OrgDb = org.Hs.eg.db,
+  ont = "BP",
+  minGSSize = 10,
+  maxGSSize = 500,
+  pvalueCutoff = NULL,
+  verbose = FALSE,
+  nPermSimple = 100000,
+  eps = 0
+)
+
+gsea_res_g20_g21_kegg <- gseKEGG(geneList = gene_list_entrez_g20_g21,
+              organism     = 'hsa',
+              minGSSize    = 120,
+              pvalueCutoff = 0.05,
+              verbose      = FALSE,
+              nPermSimple = 100000,
+  eps = 0)
+
+
+gsea_res_g20_g21_react <- gsePathway(geneList = gene_list_entrez_g20_g21,
+                          organism = "human",
+                          minGSSize = 15,
+                          maxGSSize = 500,
+                          eps = 0,
+                          nPermSimple = 100000,
+                          seed = TRUE)
+
+
+
+
+msig <- msigdbr(species = "Homo sapiens", collection = "H")
+
+
+gene_sets <- msig %>%
+  split(x = .$entrez_gene, f = .$gs_name)
+
+fgsea_res_g20_g21 <- fgsea(
+  pathways = gene_sets,
+  stats = gene_list_entrez_g20_g21,
+  eps = 0,
+  nPermSimple = 10000
+  )
+
+p1 <- dotplot(gsea_res_g20_g21_go, x = "NES")
+
+p2 <- dotplot(gsea_res_g20_g21_kegg, x = "NES")
+
+p3 <- dotplot(gsea_res_g20_g21_react, x = "NES")
+
+
+enrichment_mnn_g20_g21 <- (p1 + ggtitle("GO enrichment")) + 
+  (p2 + ggtitle("KEGG enrichment"))  + 
+  (p3 + ggtitle("Reactome enrichment")) & plot_annotation(title = "Clusters 20 and 21 vs rest of RGC")
+
+fgsea_res_g20_g21 <- fgsea_res_g20_g21 %>%
+  mutate(direction = ifelse(NES > 0, "Upregulated", "Downregulated"))
+
+top_up_g20_g21 <- fgsea_res_g20_g21 %>%
+  filter(direction == "Upregulated") %>%
+  arrange(padj) %>%
+  head(10)
+
+top_down_g20_g21 <- fgsea_res_g20_g21 %>%
+  filter(direction == "Downregulated") %>%
+  arrange(padj) %>%
+  head(10)
+
+top_all_g20_g21 <- bind_rows(top_up_g20_g21, top_down_g20_g21)
+
+ggplot(top_all_g20_g21, aes(x = NES, y = reorder(pathway, NES))) +
+  geom_col(aes(fill = NES > 0)) +
+  facet_wrap(~direction, scales = "free_y") +
+  labs(x = "NES", y = "Pathway") +
+  scale_fill_manual(values = c("TRUE" = "steelblue", "FALSE" = "tomato")) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+topPathways_g20_g21 <- fgsea_res_g20_g21[head(order(pval), n=15)][order(NES), pathway]
+plotGseaTable(gene_sets[topPathways_g20_g21], gene_list_entrez_g20_g21,
+              fgsea_res_g20_g21, gseaParam=0.5)
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/enrichment_g20_g21_mnn.png"), enrichment_mnn_g20_g21, height = 6, width = 24, units = "in")
+
+```
+
+#### Cell cycle
+
+```{r}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+int_cc <- CellCycleScoring(split_snrna, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+all_cc_plot <- DimPlot(int_cc, group.by = "Phase") + 
+  ggtitle("Cell cycle on all tumors") + 
+  scale_color_discrete(palette = "Set2")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/all_cc_plot.png"), all_cc_plot, height = 6, width = 8, units = "in")
+
+split_cc_plot <- DimPlot(int_cc, group.by = "Phase", split.by = "orig.ident", ncol = 3) + 
+  ggtitle("Cell cycle on all tumors")  + 
+  scale_color_discrete(palette = "Set2")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/split_cc_plot.png"), split_cc_plot, height = 12, width = 16, units = "in")
+
+```
+
+#### Top genes 20 and 21
+
+```{r}
+
+group_mnn@meta.data
+
+```
+
+#### Miscellaneous plots
+
+```{r}
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+mnn_umapdf <- split_snrna@meta.data 
+
+ages <-  c(
+  "GSM8058157"= 48, 
+  "GSM8058158" = 12, 
+  "GSM8058159" = 12, 
+  "GSM8058160" = 34, 
+  "GSM8058161" = 30,
+  "GSM8058162" = 29,
+  "GSM8058163" = 31.2,
+  "GSM8058164" = 35,
+  "GSM8058165" = 39.6
+  )
+
+mnn_umapdf["Age (months)"] <- ages[mnn_umapdf$orig.ident]
+
+mnn_umapdf <- mnn_umapdf |>
+  dplyr::select(orig.ident, mnn_clusters, Tumor_Type, cluster_group, celltype_mnn, `Age (months)`) |>
+  rownames_to_column("cell") |>
+  dplyr::mutate(ID = paste0(orig.ident, " (", Tumor_Type, ")", " (", `Age (months)`, ") "))
+
+group_plot <- (DimPlot(split_snrna, group.by = "cluster_group") + ggtitle("Cluster groups")) 
+
+group_his_xgroup <- plot_hist(mnn_umapdf, "cluster_group", "ID") + 
+  scale_fill_prism("warm_pastels")
+group_his <- plot_hist(mnn_umapdf, "orig.ident", "cluster_group")
+
+group_mnn_plots <- (group_plot + theme(legend.position = "none")) | (group_his  + theme(legend.position = "left")) & plot_layout(guides = "keep") | (group_his_xgroup+ theme(legend.position = "right"))
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/group_mnn_plots.png"), group_mnn_plots, height = 6, width = 16, units = "in")
+
+clus_mnn <- DimPlot(split_snrna,
+        reduction = "mnn.umap",
+        group.by = "mnn_clusters",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6) + ggtitle("Leiden clusters resolution 1.8")
+
+
+id_mnn <- DimPlot(split_snrna,
+        reduction = "mnn.umap",
+        group.by = "orig.ident",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + 
+  scale_color_prism("warm_pastels") + 
+  ggtitle("Sample ID")
+
+
+mutation_mnn <- DimPlot(split_snrna,
+        reduction = "mnn.umap",
+        group.by = "Tumor_Type",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("Tumor mutation")
+
+
+mnn_patch <- (id_mnn + mutation_mnn) / (clus_mnn + group_mnn_plots) + plot_annotation(title = "Integrated UMAP: MNN")
+
+saveRDS(split_snrna, paste0(here::here(), "/defaria/snRNA/data/mnn_corrected_combined.rds"))
+```
+
+#### Label transfer
+
+```{r full_celltype_score}
+
+split_snrna <- readRDS(paste0(here::here(), "/defaria/snRNA/data/mnn_corrected_combined.rds"))
+cellmarkers[["NEC"]] <- nec
+cellmarkers[["NEC2"]] <- nec2
+cellmarkers[["ETMR"]] <- etmr_sig_pos
+
+
+celltypes <- setNames(names(cellmarkers), paste0(names(cellmarkers), "1"))
+
+#you need to remove genes not present in data
+
+for (x in names(cellmarkers)) {
+  split_snrna <- AddModuleScore(
+    split_snrna,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+nec_rdg_ipc <- FeaturePlot(split_snrna, c("RDG1", "NEC1", "NEC21", "IPC1"), order = TRUE, keep.scale = "all")  & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+```
+
+```{r read_new_data}
+
+split_snrna <- RunPCA(split_snrna, verbose = FALSE, seed.use = 2026, npcs = 50)
+
+celltype_mnn <- c(
+                  "1"= "RGC",
+                  "2"= "Neuroblasts",
+                  "3"= "RGC",
+                  "4"= "NEC-like RGC",
+                  "5"= "RGC", 
+                  "6"= "RGC",
+                  "7"= "Neuroblasts/Neurons",
+                  "8"= "RGC-cycling",
+                  "9"= "Neuroblasts",
+                  "10"= "Neuroblasts",
+                  "11"= "Neuroblasts",
+                  "12"= "RGC",
+                  "13"= "Neuroblasts",
+                  "14"= "NEC-like RGC",
+                  "15"= "Neuroblasts",
+                  "16"= "Neuroblasts",
+                  "17"= "Neuroblasts",
+                  "18"= "Astrocytes",
+                  "19"= "IPC",
+                  "20"= "RGC",
+                  "21"= "RGC",
+                  "22"= "Microglia",
+                  "23"= "NEC-like RGC",
+                  "24"= "IPC",
+                  "25"= "Oligodendrocytes",
+                  "26"= "RGC"
+                  )
+
+Idents(split_snrna) <- "mnn_clusters"
+
+split_snrna@meta.data["celltype_mnn"]  <- celltype_mnn[as.character(Idents(split_snrna))]
+
+jessa <- readRDS(paste0(here::here(), "/defaria/scRNA/jessa/data/raw/so_etmr1_anotado.rds"))
+
+jessa <- NormalizeData(jessa, normalization.method = "LogNormalize",
+  scale.factor = 10000)
+
+jessa.anchors <- FindTransferAnchors(reference = split_snrna, query = jessa, dims = 1:30,
+    reference.reduction = "pca")
+
+predictions <- TransferData(anchorset = jessa.anchors, refdata = split_snrna$celltype_mnn, dims = 1:30)
+
+jessa <- AddMetaData(jessa, metadata = predictions)
+
+jessa$prediction.match <- jessa$predicted.id == jessa$cell_types_etmr1
+table(jessa$prediction.match)
+
+
+split_snrna <- RunUMAP(split_snrna, dims = 1:30, reduction = "integrated.mnn", return.model = TRUE, reduction.name = "mnn.umap")
+
+mnn_type_long <- split_snrna@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    mnn_clusters, 
+    names(celltypes)
+    ) |>
+  pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              mnn_clusters), names_to = "cell_type"
+    )
+
+
+violin_mnn <- mnn_type_long |>
+  ggplot(aes(x = mnn_clusters, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type), labeller = as_labeller(celltypes))
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_celltype_violin.png"), violin_mnn, height = 12, width = 18, units = "in")
+
+jessa <- MapQuery(anchorset = jessa.anchors, reference = split_snrna, query = jessa,
+    refdata = list(celltype = "celltype_mnn"), reference.reduction = "pca", reduction.model = "mnn.umap")
+
+ref_p <- DimPlot(jessa, reduction = "ref.umap", group.by = "predicted.celltype", label = TRUE,
+    label.size = 3, repel = TRUE)  + ggtitle("Jessa transferred labels")
+
+query.p <- DimPlot(jessa, reduction = "ref.umap", group.by = "cell_types_2_etmr1", label = TRUE,
+    label.size = 3, repel = TRUE)  + ggtitle("Jessa original labels")
+
+query.orig <- DimPlot(jessa, reduction = "umap.unintegrated", group.by = "seurat_clusters", label = TRUE,
+    label.size = 3, repel = TRUE)  + ggtitle("Jessa original clusters")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/ref_p_query_p_orig_p.png"), ref_p + query.p + query.orig, height = 6, width = 20, units = "in")
+ 
+```
+
+```{r}
+
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+mnn_umapdf <- split_snrna@meta.data |>
+  select(orig.ident,Sample_ID, mnn_clusters, Tumor_Type, cluster_group, celltype_mnn) |>
+  rownames_to_column("cell")
+
+ages <-  c(
+  "GSM8058157"= 48, 
+  "GSM8058158" = 12, 
+  "GSM8058159" = 12, 
+  "GSM8058160" = 34, 
+  "GSM8058161" = 30,
+  "GSM8058162" = 29,
+  "GSM8058163" = 31.2,
+  "GSM8058164" = 35,
+  "GSM8058165" = 39.6
+  )
+
+mnn_umapdf["Age (months)"] <- ages[mnn_umapdf$orig.ident]
+
+mnn_umapdf <- mnn_umapdf |>
+  dplyr::select(orig.ident, mnn_clusters, Tumor_Type, cluster_group, celltype_mnn, `Age (months)`) |>
+  rownames_to_column("cell") |>
+  dplyr::mutate(ID = paste0(orig.ident, " (", Tumor_Type, ")", " (", `Age (months)`, ") "))
+
+mnn_hist_id <- plot_hist(mnn_umapdf, "mnn_clusters", "ID") + labs(title = "Sample ID", fill = "Sample ID")
+
+mnn_hist_id_ct <- plot_hist(mnn_umapdf, "ID", "celltype_mnn") + labs(title = "Cell type by ID", fill = "Cell type")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_hist_id_ct.png"), mnn_hist_id_ct,height = 7, width = 6, units = "in")
+
+mnn_hist_mut_ct <- plot_hist(mnn_umapdf, "Tumor_Type", "celltype_mnn") + labs(title = "Cell type by mutation", fill = "Cell type")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_hist_mut_ct.png"), mnn_hist_mut_ct,height = 7, width = 6, units = "in")
+
+celltype_plot <- DimPlot(split_snrna, group.by = "celltype_mnn", label = TRUE) + NoLegend() + ggtitle("Cell type")
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/celltype_plot.png"), celltype_plot,height = 7, width = 6, units = "in")
+
+mnn_hist_id_clusg <- plot_hist(mnn_umapdf, "ID", "cluster_group") + labs(title = "Sample ID", fill = "Sample ID")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_hist_id_clusg.png"), mnn_hist_id_clusg,height = 6, width = 6, units = "in")
+
+mnn_hist_mut <- plot_hist(mnn_umapdf, "mnn_clusters", "Tumor_Type") + labs(title = "Mutation", fill = "Mutation")
+
+mnn_id_pct <- mnn_umapdf |>
+  dplyr::count(mnn_clusters, orig.ident) |>
+  group_by(mnn_clusters) |>
+  mutate(percentage = n / sum(n) * 100)
+
+mnn_mut_pct <- mnn_umapdf |>
+  dplyr::count(mnn_clusters, Tumor_Type) |>
+  group_by(mnn_clusters) |>
+  mutate(percentage = round(n / sum(n) * 100,2)) 
+
+dicer_sel_clus_mnn <- mnn_mut_pct |>
+  dplyr::filter(Tumor_Type == "Dicer" & 75 > percentage & percentage >= 25) |>
+  ungroup() |>
+  dplyr::rename() |>
+  gt(groupname_col = "Tumor_Type",
+    row_group_as_column = TRUE) |>
+  cols_label(
+    mnn_clusters = "Cluster",
+    n = "# of cells",
+    percentage = "Percentage"
+  ) |>
+  tab_style(
+    style = list(
+      cell_fill(color = "lightcyan"),
+      "font-variant: small-caps;",
+      cell_text(v_align = "middle")
+    ),
+    locations = cells_row_groups()
+  ) |>
+  tab_header(
+    title = "Selected clusters",
+    subtitle = "Leiden clustering on MNN-corrected data (res = 1.8)"
+  )
+
+mnn_plots <- ((id_mnn + theme(legend.position = "none", plot.title=element_blank())) + 
+    (mnn_hist_id + theme(plot.title=element_blank()))) /
+  ((mutation_mnn + theme(legend.position = "none", plot.title=element_blank())) + 
+     (mnn_hist_mut + theme(plot.title=element_blank())))/
+  ((clus_mnn + theme( plot.title=element_blank())) + dicer_sel_clus_mnn) + plot_annotation(title = "Integrated: MNN")
+
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/mnn_plots.png"), mnn_plots,height = 16, width = 14, units = "in")
+```
+
+```{r}
+
+```
+
+```{r}
+
+nec_order <-c(
+  "7",
+  "11",
+  "10",
+  "0",
+  "1",
+  "6",
+  "15",
+  "17",
+  "18",
+  "8",
+  "9",
+  "5",
+  "13",
+  "3",
+  "4",
+  "12",
+  "14",
+  "2",
+  "16"
+) 
+
+DimPlot(jessa, reduction = "ref.umap", group.by = "RNA_snn_res.0.8", label = TRUE,
+    label.size = 3, repel = TRUE) + NoLegend() + ggtitle("Jessa original clusters") + 
+  ggforce::geom_mark_hull(aes(x = refUMAP_1, y = refUMAP_2, filter = predicted.celltype == "RGC"),
+                          concavity = 3,
+                          expand = unit(2, "mm"),
+                          linetype = 2
+                          )
+
+
+ref_p + 
+  ggforce::geom_mark_hull(aes(x = refUMAP_1, y = refUMAP_2, filter = predicted.celltype == "RGC"),
+                          concavity = 3,
+                          expand = unit(2, "mm"),
+                          linetype = 2
+                          )
+ref_p + 
+  ggforce::geom_mark_hull(aes(x = refUMAP_1, y = refUMAP_2, group = "RNA_snn_res.0.8"), concavity = 1, expand = unit(2, "mm"), con.cap = 1)
+
+
+p <- DimPlot(jessa, reduction = "ref.umap", group.by = "RNA_snn_res.0.8", label = TRUE) + ggtitle("Jessa original clusters on new projection")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/mnn/ref_p_query_p_orig_clus.png"), p, height = 6, width = 7, units = "in")
+
+p + DimPlot(split_snrna, reduction = "mnn.umap", group.by = "mnn_clusters", label = TRUE)
+
+df <- p$data
+df$predicted.celltype <- jessa$predicted.celltype
+
+rgc <- df %>% filter(predicted.celltype == "RGC")
+
+hull <- rgc[chull(rgc$refUMAP_1, rgc$refUMAP_2), ]
+
+p +
+  geom_polygon(
+    data = hull,
+    aes(x = refUMAP_1, y = refUMAP_2),
+    fill = NA,
+    color = "black",
+    linetype = 2,
+    linewidth = 1
+  )
+
+DimPlot(
+  jessa,
+  reduction = "ref.umap",
+  cells.highlight = WhichCells(jessa, expression = predicted.celltype == "RGC")
+)
+
+```
+
+### Cell trajectory
+
+```{r}
+
+split_snrna <- readRDS(paste0(here::here(), "/defaria/snRNA/data/mnn_corrected_combined.rds"))
+
+split_snrna <- RunUMAP(split_snrna, reduction = "integrated.mnn", dims = 1:30, n.components = 3, seed.use = 42, reduction.name = "umap")
+
+
+cds <- as.cell_data_set(split_snrna)
+
+reducedDims(cds)$UMAP <- Embeddings(split_snrna, "umap")
+
+colData(cds)$cluster <- split_snrna$mnn_clusters
+
+colData(cds)$celltype <- split_snrna$celltype_mnn #check that this matches everywhere
+gc()
+
+# Build Monocle's internal graph/partitions
+
+cds@clusters$UMAP$partitions <- setNames(as.factor(rep(1, length(cds@colData@rownames))), cds@colData@rownames)
+
+cds@clusters$UMAP$clusters <- colData(cds)$cluster
+
+cds <- learn_graph(cds, use_partition = FALSE)
+
+gc()
+
+qs_save(cds, "/home/sofia/Projects/etmr/defaria/mouse/data/tumor_sing_tr.qs2", nthreads = 6)
+
+cds <- qs_read("/home/sofia/Projects/etmr/defaria/mouse/data/tumor_sing_tr.qs2", nthreads = 6)
+
+human_traj_clus_umap <- plot_cells_3d(cds)
+
+saveWidget(human_traj_clus_umap, "/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_traj_clus_umap_3d.html", selfcontained = TRUE)
+
+
+#Order in pseudotime
+
+origin_cells <- rownames(colData(cds))[colData(cds)$celltype=="RGC_NEC-like"]
+
+cds <- order_cells(cds, root_cells = origin_cells)
+
+gc()
+
+cds$pseudotime <- pseudotime(cds)
+
+source("~/Projects/etmr/defaria/scripts/functions.R")  
+
+wt_pseudo_umap <- plot_cells_3d(cds, color_cells_by = "pseudotime", alpha = .4)
+
+saveWidget(wt_pseudo_umap, "/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/wt_pseudo_umap_3d.html", selfcontained = TRUE)
+
+
+colData(cds)$celltype <- factor(gsub("_GABA|_Glut", "", colData(cds)$celltype.1.8), levels = c("RGC_NEC-like", "RGC", "IPC", "Neurons_immature", "Neurons", "PC/EC", "Microglia", "Lymphocytes", "Oligodendrocytes", "Astrocytes"))
+
+celltype_colors <- c("Neurons_Glut" = "#9381ff", "IPC_Glut" = "#b8b8ff",
+"Neurons_GABA" = "#ff97c4", "IPC_GABA" = "#ffc8c4",
+"Neurons" = "#ff70a6",
+"Neurons_immature" = "#ff9770",
+"IPC" = "#ffd670",
+"RGC_NEC-like" = "#2fbf71", "RGC" = "#8cd867", 
+"PC/EC" = "#61f2c2",
+"Astrocytes" = "#72ddf7",
+"Microglia" = "#b8d0ec", 
+"Oligodendrocytes" = "#d2d2cf", 
+"Lymphocytes" = "#118ab2")
+
+
+wt_celltype_umap <- plot_cells_3d_fixed(cds, color_cells_by = "celltype", color_palette = celltype_colors)
+
+saveWidget(wt_celltype_umap, "/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/wt_celltype_umap_3d.html", selfcontained = TRUE)
+
+
+#range of pseudotime per cell
+
+
+weird_order <- celltype_colors
+
+data.pseudo.wt <- as.data.frame(colData(cds)) 
+
+pseudo_celltype_wt <- data.pseudo.wt |>
+  ggplot(aes(pseudotime, reorder(celltype, pseudotime, median), fill = celltype))  +
+  geom_boxplot() +
+  scale_fill_manual(values = weird_order)
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/pseudo_celltype_wt.png", pseudo_celltype_wt, height = 12, width = 8, units = "in")
+
+pseudo_cluster_wt <- data.pseudo.wt |>
+  ggplot(aes(pseudotime, reorder(cluster, pseudotime, median), fill = celltype))  +
+  geom_boxplot() +
+  scale_fill_manual(values = weird_order) +
+  ggtitle("Pseudotime by cluster 12-sp-WT-human integration")
+
+ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/pseudo_cluster_wt.png", pseudo_cluster_wt, height = 10, width = 18, units = "in")
+
+
+qs_save(cds, "/home/sofia/Projects/etmr/defaria/mouse/data/int_wt_tumor_sing_tr.qs2", nthreads = 6)
+
+
+```

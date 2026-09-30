@@ -1,0 +1,1096 @@
+---
+title: "cca attempt"
+format: html
+editor: visual
+---
+
+## Read data
+
+```{r, include=FALSE}
+library(here)
+library(dplyr)
+library(tibble)
+library(Seurat)
+library(SeuratDisk)
+library(SeuratObject)
+library(SeuratWrappers)
+library(ggplot2)
+library(gt)
+library(patchwork)
+library(tidyr)
+# library(monocle3)
+library(ggprism)
+# library(fgsea)
+library(future)
+options(future.globals.maxSize = 16 * 1024^3)  # 16 GB
+library(qs2)
+```
+
+```{r load_data}
+
+snrna.data <- readRDS(paste0(here::here(), "/defaria/snRNA/data/combined_fixed_tumors_raw.rds"))
+```
+
+```{r cca_integration}
+
+split_snrna <- snrna.data
+split_snrna[["RNA"]] <- split(split_snrna[["RNA"]], f = split_snrna$orig.ident)
+
+split_snrna[["percent.mt"]] <- PercentageFeatureSet(split_snrna, pattern = "^MT-")
+split_snrna <- subset(split_snrna, subset = nFeature_RNA > 200 & nFeature_RNA < 6000 & nCount_RNA < 40000 & percent.mt < 15)
+split_snrna <- NormalizeData(split_snrna, normalization.method = "LogNormalize", scale.factor = 10000)
+split_snrna <- FindVariableFeatures(split_snrna, selection.method = "vst")
+split_snrna <- ScaleData(split_snrna, verbose = FALSE)
+
+split_snrna <- RunPCA(split_snrna, seed.use = 2026, verbose = FALSE)
+
+split_snrna <- IntegrateLayers(
+  object = split_snrna,
+  method = CCAIntegration,
+  normalization.method = "LogNormalize", 
+  new.reduction = "integrated.cca"
+)
+
+```
+
+```{r umap}
+split_snrna <- RunUMAP(split_snrna, reduction = "integrated.cca", dims = 1:30, reduction.name = "cca.umap", return.model = TRUE)
+split_snrna <- FindNeighbors(split_snrna, reduction = "integrated.cca", dims = 1:30)
+split_snrna <- FindClusters(split_snrna, cluster.name	= "cca_clusters", resolution = 2, random.seed = 2026, algorithm = 4)
+
+id_cca_plot <- DimPlot(split_snrna, group.by = "orig.ident", reduction = "cca.umap") + ggtitle("Sample ID")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/id_cca_plot.png"), id_cca_plot, height = 7, width = 8, units = "in")
+
+clus_cca_plot <- DimPlot(split_snrna, group.by = "cca_clusters", reduction = "cca.umap", label = TRUE) + NoLegend() + ggtitle("CCA clusters res 2")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/clus_cca_plot.png"), clus_cca_plot, height = 7, width = 8, units = "in")
+
+id_cca_plot_split <- DimPlot(split_snrna, split.by = "orig.ident", reduction = "cca.umap", ncol = 3, label = TRUE) + NoLegend()
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/id_cca_plot_split.png"), id_cca_plot_split, height = 18, width = 18, units = "in")
+
+mut_cca_plot_split <- DimPlot(split_snrna, split.by = "Tumor_Type", reduction = "cca.umap", ncol = 3, label = TRUE) + NoLegend()
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/mut_cca_plot_split.png"), mut_cca_plot_split, height = 7, width = 14, units = "in")
+
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+cca_umapdf <- split_snrna@meta.data |>
+  dplyr::select(orig.ident, cca_clusters, Tumor_Type) |>
+  rownames_to_column("cell")
+
+hist_cca_id <- plot_hist(cca_umapdf, "cca_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/hist_cca_id.png"), hist_cca_id, height = 7, width = 8, units = "in")
+
+hist_cca_mut <- plot_hist(cca_umapdf, "cca_clusters", "Tumor_Type") + labs(title = "Mutation", fill = "Mutation")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/hist_cca_mut.png"), hist_cca_mut, height = 7, width = 8, units = "in")
+
+```
+
+### Define cell type markers
+
+```{r cellmarkers}
+cellmarkers <- list(
+    "Astrocytes" = c("GFAP", "ALDH1L1", "S100B", "SLC1A2", "ACSL6", "AGT"),
+    "Oligodendrocytes" = c("MBP", "MOG", "CLDN14", "NIPAL4", "PLP1", "ERMN", "CLDN14", "KLK6", "EML1"),
+    "Oligodendrocyte progenitors" = c("PDGFRA", "ALDOC", "OLIG1", "EPN2", "NEU4", "NKX6-2", "SOX10", "FYN"),
+    "Microglia" = c("RGS10", "DLEU7", "CD40", "CD68", "ITGAM", "CX3CR1", "TMEM119"),
+    "PC" = c("COL1A2", "PDGFRB", "ANXA2", "RGS5", "ACTA2"),
+    "EC" = c("CLDN5", "CD31"),
+    "Neuroblasts" = c("DCX", "NEUROG1", "NCAM1", "NEUROD1"),
+    "Neurons (general)" = c("DISP2", "PRPH", "CNTNAP2", "RBFOX3", "NEFM", "NRGN", "SGIP1", "ENO2"),
+    "GABA" = c("GAD1", "GAD2", "SLC6A1", "SLC32A1", "DLX1", "GABBR2", "GADD45B", "PAX2"),
+    "Glutamatergic" = c("SLC17A6", "SLC17A7", "SLC17A8"),
+    "Cycling" = c("TOP2A", "MKI67", "AURKA"),
+    "IPC" = c("EOMES", "HES6", "NEUROD4"),
+    "RDG" = c("PAX6", "SLC1A3", "PDGFD", "GLI3", "NOTCH3", "VCAM1", "HES5", "CDH4", "SPRY1", "AXIN2", "SOX2", "VIM", "NES"),
+  "T-cell" = c("CD2", "CD3E", "CD52", "PTPRC"),
+    "ETMR" = c("ABCB5",
+                  "ACRV1",
+                  "ACVR2A",
+                  "ACVR2B",
+                  "ADAM7",
+                  "AGO1",
+                  "AGPS",
+                  "APELA",
+                  "BLTP3A",
+                  "C16orf82",
+                  "C22orf42",
+                  "CALHM4",
+                  "CBX2",
+                  "CCDC150",
+                  "CCNE1",
+                  "CCNJ",
+                  "CCNT2",
+                  "CDC25A",
+                  "CDC7",
+                  "CHAC2",
+                  "CHRNA5",
+                  "CHRNB4",
+                  "CRABP1",
+                  "CRYGC",
+                  "CSAG2",
+                  "CSAG3",
+                  "CTCFL",
+                  "CTPS1",
+                  "CXXC4",
+                  "CYP27C1",
+                  "DAAM1",
+                  "DEPDC1B",
+                  "DIS3L2",
+                  "DNA2",
+                  "DNMT3B",
+                  "DTX4",
+                  "EPB41",
+                  "EVX2",
+                  "EXOSC7",
+                  "FAM161A",
+                  "FANCD2OS",
+                  "FIGNL2",
+                  "FOXB1",
+                  "GABRR1",
+                  "GATA3",
+                  "GBX1",
+                  "GJC1",
+                  "GPR20",
+                  "GREB1",
+                  "GREB1L",
+                  "H1-2",
+                  "H2BC11",
+                  "H2BC26",
+                  "H2BC9",
+                  "H3C15",
+                  "HCRTR2",
+                  "HELLS",
+                  "HES5",
+                  "HIC2",
+                  "HMX2",
+                  "HOXA1",
+                  "HOXA3",
+                  "HOXB1",
+                  "HRC",
+                  "IDH1",
+                  "IGF2BP1",
+                  "INSM2",
+                  "KCNH8",
+                  "KLHL23",
+                  "KPNA2",
+                  "LBX1",
+                  "LCOR",
+                  "LIN28A",
+                  "LIN28B",
+                  "MAGEA10",
+                  "MAGEA12",
+                  "MAGEA2B",
+                  "MAGEA3",
+                  "MAGEA6",
+                  "MBTD1",
+                  "MEIS1",
+                  "MSH2",
+                  "MTF2",
+                  "MTTP",
+                  "NDST4",
+                  "NEUROG3",
+                  "NHEJ1",
+                  "NKX1-1",
+                  "NKX1-2",
+                  "NKX6-3",
+                  "NPPC",
+                  "NR6A1",
+                  "NSD2",
+                  "NUP210",
+                  "NUP62CL",
+                  "ONECUT1",
+                  "ORC1",
+                  "OTP",
+                  "P2RX3",
+                  "PAPOLG",
+                  "PBX2",
+                  "PDE7A",
+                  "PGAP1",
+                  "PHF6",
+                  "PHOX2B",
+                  "PIK3C2B",
+                  "PLEKHA8",
+                  "PMFBP1",
+                  "POLQ",
+                  "POTEE",
+                  "POTEF",
+                  "POTEI",
+                  "PRDM12",
+                  "PRDM13",
+                  "PRDM5",
+                  "PRIM1",
+                  "PRTG",
+                  "PTBP2",
+                  "RAD54L2",
+                  "RALGPS2",
+                  "RARB",
+                  "RASAL2",
+                  "RNF152",
+                  "RPS6KA6",
+                  "RRM2",
+                  "RTKN2",
+                  "SALL4",
+                  "SANBR",
+                  "SCML2",
+                  "SCML4",
+                  "SCN11A",
+                  "SCUBE3",
+                  "SEMG2",
+                  "SERTM2",
+                  "SESTD1",
+                  "SFRP2",
+                  "SHISA3",
+                  "SINHCAF",
+                  "SMARCC1",
+                  "SOX11",
+                  "SOX14",
+                  "SOX3",
+                  "SP8",
+                  "SPSB4",
+                  "SRPK1",
+                  "STK26",
+                  "STRBP",
+                  "SUV39H2",
+                  "TIA1",
+                  "TMC4",
+                  "TRIM71",
+                  "TSGA10IP",
+                  "ULBP3",
+                  "USP44",
+                  "VSX2",
+                  "WNT7A",
+                  "ZBTB39",
+                  "ZFHX3",
+                  "ZNF439",
+                  "ZNF462",
+                  "ZNF48",
+                  "ZNF608",
+                  "ZNF620",
+                  "ZNF71"),
+
+"NEC (Sol)" = c("MDK",
+         "MIF",
+         "AC090498.1",
+         "PSMA4",
+         "SMS",
+         "HSPA5",
+         "RANBP1",
+         "TPM1",
+         "IGFBP2",
+         "PFN1",
+         "OSTC",
+         "HMGA1",
+         "LAPTM4A",
+         "MYL12A",
+         "PDIA6",
+         "PRELID1",
+         "ARF4",
+         "OCIAD2",
+         "MAD2L1",
+         "PDIA3",
+         "KPNA2",
+         "AKR1B1",
+         "EIF4E",
+         "TMED9",
+         "MRPL42"),
+
+"NEC2" = c(
+  "ID3",
+  "PRTG",
+  "WNT8B"
+)
+)
+```
+
+### Score cell types
+
+```{r annotation, warning=FALSE}
+for (x in names(cellmarkers)) {
+  split_snrna <- AddModuleScore(
+    split_snrna,
+    features = cellmarkers[x],
+    name = x
+  )
+}
+
+cca_feat_origcol <- FeaturePlot(split_snrna, 
+                            features = paste0(names(cellmarkers),"1"), ncol = 3, 
+                            reduction = "cca.umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/feat_orig_scale.png"), cca_feat_origcol,height = 22, width = 20, units = "in")
+
+cca_type_long <- split_snrna@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    cca_clusters, 
+    paste0(names(cellmarkers),"1")
+    ) |>
+  pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+              cca_clusters), names_to = "cell_type"
+    )
+  
+violin_cca <- cca_type_long |>
+  dplyr::filter(cell_type %in% c(paste0(names(cellmarkers), "1"))) |>
+  dplyr::group_by(cell_type, cca_clusters) |>
+  dplyr::filter(mean(value, na.rm = TRUE) > 0 & median(value, na.rm = TRUE) > 0) |>
+  dplyr::ungroup() |>
+  ggplot(aes(x = cca_clusters, y = value)) +
+  geom_violin() +
+  facet_wrap(vars(cell_type), scales = "free")
+
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/violin.png"), violin_cca,height = 16, width = 24, units = "in")
+
+cca_type_long |>
+  dplyr::filter(cell_type == "NEC (Sol)1") |>
+  ggplot(aes(x = cca_clusters, y = value)) +
+  geom_violin() 
+
+cca_type_long |>
+  dplyr::filter(cell_type == "Astrocytes1" & cca_clusters %in% c("26","29")) |>
+  ggplot(aes(x = cca_clusters, y = value)) +
+  geom_violin() 
+
+cca_type_long |>
+  dplyr::filter(cell_type == "Oligodendrocytes1" & cca_clusters %in% c("26","29")) |>
+  ggplot(aes(x = cca_clusters, y = value)) +
+  geom_violin() 
+
+cca_type_long |>
+  dplyr::filter(cell_type == "PC1" & cca_clusters %in% c("31","33")) |>
+  ggplot(aes(x = cca_clusters, y = value)) +
+  geom_violin() 
+
+cca_type_long |>
+  dplyr::filter(cell_type == "EC1" & cca_clusters %in% c("31","33")) |>
+  ggplot(aes(x = cca_clusters, y = value)) +
+  geom_violin() 
+
+cca_type_long |>
+  dplyr::filter(cell_type == "Microglia1" & cca_clusters == "23") |>
+  ggplot(aes(x = cca_clusters, y = value)) +
+  geom_violin() 
+
+cca_type_long |>
+  dplyr::filter(cell_type == "T-cell1" & cca_clusters == "27") |>
+  ggplot(aes(x = cca_clusters, y = value)) +
+  geom_violin() 
+
+cca_type_long |>
+  dplyr::filter(cell_type == "RDG1" & cca_clusters == "27") |>
+  ggplot(aes(x = cca_clusters, y = value)) +
+  geom_violin() 
+```
+
+```{r}
+# celltype_cca <- c(
+#                   "1"= "Neuroblasts",
+#                   "2"= "Neuroblasts",
+#                   "3"= "NEC-like RGC",
+#                   "4"= "NEC-like RGC",
+#                   "5"= "NEC-like RGC", 
+#                   "6"= "RGC",
+#                   "7"= "RGC",
+#                   "8"= "Neuroblasts",
+#                   "9"= "NEC-like RGC",
+#                   "10"= "Neuroblasts",
+#                   "11"= "NEC-like RGC",
+#                   "12"= "IPC",
+#                   "13"= "T-cells",
+#                   "14"= "Astrocytes",
+#                   "15"= "Neuroblasts",
+#                   "16"= "RGC",
+#                   "17"= "Neuroblasts",
+#                   "18"= "Microglia",
+#                   "19"= "Oligodendrocytes",
+#                   "20"= "PC",
+#                   "21"= "RGC",
+#                   "22"= "EC"
+#                   )
+
+# celltype_cca <- c(
+#                   "1"= "NEC-like RGC",
+#                   "2"= "RGC",
+#                   "3"= "NEC-like RGC",
+#                   "4"= "RGC",
+#                   "5"= "Neurons",
+#                   "6"= "Neurons",
+#                   "7"= "Neuroblasts",
+#                   "8"= "NEC-like RGC",
+#                   "9"= "Neurons",
+#                   "10"= "Neuroblasts",
+#                   "11"= "NEC-like RGC",
+#                   "12"= "NEC-like RGC",
+#                   "13"= "IPC",
+#                   "14"= "NEC-like RGC",
+#                   "15"= "Neurons",
+#                   "16"= "Neurons",
+#                   "17"= "Neurons",
+#                   "18"= "NEC-like RGC",
+#                   "19"= "Neurons",
+#                   "20"= "NEC-like RGC",
+#                   "21"= "NEC-like RGC",
+#                   "22"= "Neurons",
+#                   "23" = "Microglia",
+#                   "24" = "RGC",
+#                   "25" = "NEC-like RGC",
+#                   "26" = "Oligodendrocytes",
+#                   "27" = "NEC-like RGC",
+#                   "28" = "IPC",
+#                   "29" = "Astrocytes",
+#                   "30" = "Neurons",
+#                   "31" = "PC",
+#                   "32" = "Neuroblasts",
+#                   "33" = "EC"
+#                   )
+
+
+celltype_cca <- c(
+                  "1"= "NEC-like RGC",
+                  "2"= "RGC",
+                  "3"= "NEC-like RGC",
+                  "4"= "RGC",
+                  "5"= "Neurons",
+                  "6"= "Neurons",
+                  "7"= "Neuroblasts",
+                  "8"= "NEC-like RGC",
+                  "9"= "Neurons",
+                  "10"= "Neuroblasts",
+                  "11"= "NEC-like RGC",
+                  "12"= "NEC-like RGC",
+                  "13"= "IPC",
+                  "14"= "NEC-like RGC",
+                  "15"= "Neurons",
+                  "16"= "Neurons",
+                  "17"= "Neurons",
+                  "18"= "RGC",
+                  "19"= "Neurons",
+                  "20"= "NEC-like RGC",
+                  "21"= "NEC-like RGC",
+                  "22"= "Neurons",
+                  "23" = "Microglia",
+                  "24" = "RGC",
+                  "25" = "NEC-like RGC",
+                  "26" = "Oligodendrocytes",
+                  "27" = "RGC",
+                  "28" = "IPC",
+                  "29" = "Astrocytes",
+                  "30" = "Neurons",
+                  "31" = "PC",
+                  "32" = "Neuroblasts",
+                  "33" = "EC"
+                  )
+
+Idents(split_snrna) <- "cca_clusters"
+
+split_snrna@meta.data["celltype_cca"]  <- celltype_cca[as.character(Idents(split_snrna))]
+
+celltype_plot_cca <- DimPlot(split_snrna,
+        reduction = "cca.umap",
+        group.by = "celltype_cca",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("cca cell type")
+
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/celltype_plot_cca.png"), celltype_plot_cca, height = 7, width = 8, units = "in")
+
+etmr_cca <- c("1"= "yes",
+                  "2"= "yes",
+                  "3"= "yes",
+                  "4"= "yes",
+                  "5"= "yes",
+                  "6"= "yes",
+                  "7"= "yes",
+                  "8"= "yes",
+                  "9"= "yes",
+                  "10"= "yes",
+                  "11"= "yes",
+                  "12"= "yes",
+                  "13"= "yes",
+                  "14"= "yes",
+                  "15"= "no",
+                  "16"= "yes",
+                  "17"= "yes",
+                  "18"= "yes",
+                  "19"= "yes",
+                  "20"= "yes",
+                  "21"= "yes",
+                  "22"= "yes",
+                  "23" = "no",
+                  "24" = "yes",
+                  "25" = "yes",
+                  "26" = "no",
+                  "27" = "yes",
+                  "28" = "yes",
+                  "29" = "no",
+                  "30" = "yes",
+                  "31" = "no",
+                  "32" = "yes",
+                  "33" = "no"
+                  )
+
+split_snrna@meta.data["etmr_cca"]  <- etmr_cca[as.character(Idents(split_snrna))]
+
+etmr_plot <- DimPlot(split_snrna,
+        reduction = "cca.umap",
+        group.by = "etmr_cca",
+        label = FALSE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("cca ETMR")
+
+ggsave(paste0(here::here(), "/defaria/snRNA/plots/umaps/1.8/integrated/tumors/cca/etmr_plot_cca.png"), etmr_plot, height = 7, width = 8, units = "in")
+
+library(qs2)
+qs_save(split_snrna, file = paste0(here::here(), "/defaria/snRNA/data/cca_integrated.qs2"), nthreads = 6)
+```
+
+```{r paper_cellmarkers}
+
+paper_cellamrker <- list(
+  "RG-like" = c("DBI", "FABP7", "VIM"),
+  "Nprog-like" = c("EOMES", "HMGB2", "TOP2A", "CCND2"),
+  "Nb-like" = c("STMN2", "STMN3", "TUBB2A", "NHLH1", "MAP2"),
+  "OPC" = c("PDGFRA", "OLIG1"),
+  "PC" = c("COL1A2", "PDGFRB", "ANXA2", "RGS5", "ACTA2"),
+  "EC" = c("CLDN5", "CD31"),
+  "MG" = c("FCGR3", "TREM2", "CD74"),
+  "T-cell" = c("CD2", "CD3E", "CD52", "PTPRC")
+)
+
+
+
+FeaturePlot(split_snrna, features = paper_cellamrker$`T-cell`, order = TRUE)
+FeaturePlot(split_snrna, features = paper_cellamrker$PC, order = TRUE)
+FeaturePlot(split_snrna, features = paper_cellamrker$MG, order = TRUE)
+FeaturePlot(split_snrna, features = paper_cellamrker$EC, order = TRUE)
+FeaturePlot(split_snrna, features = paper_cellamrker$`RG-like`, order = TRUE)
+FeaturePlot(split_snrna, features = paper_cellamrker$OPC, order = TRUE)
+FeaturePlot(split_snrna, features = paper_cellamrker$`Nprog-like`, order = TRUE)
+FeaturePlot(split_snrna, features = paper_cellamrker$MG, order = TRUE)
+FeaturePlot(split_snrna, features = cellmarkers$Microglia, order = TRUE)
+```
+
+```{r}
+cca_feat_origcol
+DimPlot(split_snrna,
+        reduction = "cca.umap",
+        group.by = "cca_clusters",
+        label = TRUE,
+        raster = FALSE,
+        pt.size = .5,
+        shuffle = TRUE,
+        alpha = .6
+        ) + ggtitle("cca cell type")
+
+FeaturePlot(split_snrna, features = "ETMR1",                          reduction = "cca.umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+FeaturePlot(split_snrna, features = c("Astrocytes1", "RDG1"),                          reduction = "cca.umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+FeaturePlot(split_snrna, features = c("NEC21", "NEC (Sol)1"),                          reduction = "cca.umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+) 
+
+```
+
+### Integrate with mouse
+
+```{r load_mouse}
+
+wt_mouse <- readRDS(paste0(here::here(), "/defaria/mouse/so_12_SP_WT_prefiltered.rds"))
+ko_mouse <- readRDS(paste0(here::here(), "/defaria/mouse/so_12_SP_KO_prefiltered.rds"))
+
+merged_mouse <- merge(wt_mouse, ko_mouse, add.cell.ids = c("WT", "KO"))
+
+#join layers to split everything later
+merged_mouse <- JoinLayers(merged_mouse)
+
+orthologs <- read.table("/home/sofia/Projects/etmr/defaria/mouse/orthologs_final_human_mouse.tsv", header = FALSE, col.names = c("human", "mouse", "remove1", "remove2"))[,-c(3, 4)]
+
+genes <- rownames(merged_mouse)
+
+# Match to mapping table
+new_names <- orthologs$human[
+  match(genes, orthologs$mouse)
+]
+new_names <- new_names[!is.na(new_names)]
+
+merged_mouse <- merged_mouse[genes[genes%in%orthologs$mouse]]
+
+rownames(merged_mouse) <- new_names
+
+genes_in_common <- intersect(rownames(snrna.data), rownames(merged_mouse))
+
+tumor_to_merge <- snrna.data[genes_in_common]
+mouse_to_merge <- merged_mouse[genes_in_common]
+
+
+```
+
+```{r merge_and_preprocess}
+
+merged_data <- list(human = tumor_to_merge, mouse = mouse_to_merge)
+
+merged_data$mouse@meta.data <- merged_data$mouse@meta.data |>
+  select(-orig.ident) |>
+  mutate(orig.ident = sample_origin)
+
+#split layes for human too
+merged_data <- lapply(merged_data, function(x) SplitObject(x, split.by = "orig.ident"))
+
+merged_data <- unlist(merged_data)
+
+merged_data <- lapply(merged_data, function(x) PercentageFeatureSet(x, pattern = "^MT-", col.name = "percent.mt"))
+
+merged_data <- lapply(merged_data, function(x) subset(x, subset = nFeature_RNA > 200 & nFeature_RNA < 6000 & nCount_RNA < 40000 & percent.mt < 15))
+
+
+merged_data <- lapply(merged_data, function(x) SCTransform(x))
+
+saveRDS(merged_data, "/home/sofia/Projects/etmr/defaria/mouse/merged_data.rds")
+
+
+```
+
+```{r get_anchors}
+
+# merged_data <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/merged_data.rds")
+# 
+# features <- SelectIntegrationFeatures(merged_data)
+# merged_data <- PrepSCTIntegration(
+#   merged_data,
+#   anchor.features = features
+# )
+# 
+# # downstream integration steps
+# anchors <- FindIntegrationAnchors(
+#   merged_data,
+#   normalization.method = "SCT",
+#   anchor.features = features
+# )
+# 
+# saveRDS(merged_data, "/home/sofia/Projects/etmr/defaria/mouse/merged_data.rds")
+# saveRDS(anchors, "/home/sofia/Projects/etmr/defaria/mouse/anchors.rds")
+
+# Remember to filter genes so they're all the same across samples
+merged_data <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/merged_data.rds")
+merged_data <- lapply(merged_data, function(x) DietSeurat(x))
+common.genes <- Reduce(intersect, lapply(merged_data, rownames))
+
+merged_data <- lapply(merged_data, function(x) {
+  x[common.genes, ]
+})
+
+qs_save(merged_data, "/home/sofia/Projects/etmr/defaria/mouse/merged_data_filt.qs2")
+
+
+qs_to_rds(input_file = "/home/sofia/Projects/etmr/defaria/mouse/merged_data_filt.qs2", output_file = "/home/sofia/Projects/etmr/defaria/mouse/merged_data_filt.rds")
+
+merged_data <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/merged_data_filt.rds")
+order.genes <- Reduce(intersect, lapply(merged_data, rownames))
+
+GetAssayData(merged_data$mouse.12_KO3_SP, assay = "RNA", layer = "counts")[1:5, 1:5]
+#If I don't reorder everything this thing goes INSANE
+#I don't want the previously computed SCT normalization because it's not supposed to work with RunFastMNN
+
+merged_data <- lapply(merged_data, function(x) {
+  DefaultAssay(x) <- "RNA"
+  x <- subset(x, features = order.genes)
+  x
+})
+
+GetAssayData(merged_data$mouse.12_KO3_SP, assay = "RNA", layer = "counts")[1:5, 1:5]
+GetAssayData(merged_data$mouse.12_KO3_SP, assay = "SCT", layer = "counts")[1:5, 1:5]
+
+merged_data <- lapply(merged_data, function(x) NormalizeData(x))
+merged_data <- lapply(merged_data, function(x) FindVariableFeatures(x))
+
+qs_save(merged_data, "/home/sofia/Projects/etmr/defaria/mouse/merged_data_filt.qs2", nthreads = 5)
+```
+
+```{r integrate}
+
+
+qs_to_rds(input_file = "/home/sofia/Projects/etmr/defaria/mouse/merged_data_filt.qs2", output_file = "/home/sofia/Projects/etmr/defaria/mouse/merged_data_filt.rds")
+
+merged_data <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/merged_data_filt.rds")
+
+features <- SelectIntegrationFeatures(object.list = merged_data, nfeatures = 3000)
+
+merged_data <- lapply(merged_data, function(x) {
+  x <- subset(x, features = features)
+  x
+})
+
+merged_data <- lapply(merged_data, function(x) {
+  x <- ScaleData(x, features = features, verbose = FALSE)
+  x
+})
+
+mat_list <- lapply(merged_data, function(x) {
+  GetAssayData(x, layer = "data")[features, ]
+})
+
+mat_list <- lapply(mat_list, function(m) m[features, ])
+
+library(batchelor)
+
+mnn <- fastMNN(mat_list)
+
+mnn_embedding <- reducedDim(mnn, "corrected")
+
+
+
+combined <- CreateSeuratObject(counts = do.call(cbind, mat_list))
+mnn_embedding <- as.matrix(reducedDim(mnn, "corrected"))
+
+# ensure alignment
+mnn_embedding <- mnn_embedding[colnames(combined), ]
+
+combined[["mnn"]] <- CreateDimReducObject(
+  embeddings = mnn_embedding,
+  key = "MNN_"
+)
+
+combined <- RunUMAP(combined, reduction = "mnn", dims = 1:30, reduction.name = "mnn.umap", return.model = TRUE)
+combined <- FindNeighbors(combined, reduction = "mnn", dims = 1:30)
+combined <- FindClusters(combined, cluster.name	= "mnn_clusters", resolution = 1, random.seed = 2026, algorithm = 4)
+
+
+DimPlot(combined, reduction = "mnn.umap", group.by = c("orig.ident", "mnn_clusters"))
+
+
+```
+
+```{r}
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+mnn_umapdf <- combined@meta.data |>
+  select(orig.ident, mnn_clusters) |>
+  rownames_to_column("cell")
+
+mnn_hist_id <- plot_hist(mnn_umapdf, "mnn_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+```
+
+### DICER only
+
+```{r define_subset_dicer}
+
+
+only_dicer_wt <- c("human.GSM8058159", "mouse.12_WT1_SP",  "mouse.12_WT2_SP",  "mouse.12_WT3_SP", "mouse.12_KO1_SP",  "mouse.12_KO2_SP",  "mouse.12_KO3_SP")
+
+merged_data_dicer <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/merged_data.rds")
+
+merged_data_dicer <- merged_data_dicer[only_dicer_wt]
+
+
+merged_data_dicer <- lapply(merged_data_dicer, function(x) {
+  counts <- GetAssayData(x, assay = "RNA", layer = "counts")
+  CreateSeuratObject(counts = counts)
+})
+
+
+merged_data_dicer <- lapply(merged_data_dicer, function(x) {
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x)
+  x
+})
+
+features <- SelectIntegrationFeatures(object.list = merged_data, nfeatures = 3000)
+
+merged_data_dicer <- lapply(merged_data_dicer, function(x) {
+  x <- subset(x, features = features)
+  x
+})
+
+merged_data <- setNames(lapply(names(merged_data), function(x) {
+  merged_data[[x]]@meta.data$orig.ident <- x
+  merged_data[[x]] <- subset(merged_data[[x]], features = features)
+  merged_data[[x]]
+  }),
+  names(merged_data)
+)
+
+merged_data_dicer <- merge(
+  x = merged_data_dicer[[1]],
+  y = merged_data_dicer[-1]
+)
+
+
+
+merged_data_dicer <- FindVariableFeatures(merged_data_dicer)
+merged_data_dicer <- ScaleData(merged_data_dicer)
+
+#RunPCA returns the object already, so there's no need to do {} x
+merged_data_dicer <- RunPCA(merged_data_dicer, seed.use = 2026, verbose = FALSE)
+```
+
+```{r dicer_mnn}
+
+features <- VariableFeatures(merged_data_dicer)
+
+VariableFeaturePlot(merged_data_dicer)
+
+
+mnn_data_dicer <- IntegrateLayers(
+  merged_data_dicer,
+  features = features,
+  method = SeuratWrappers::FastMNNIntegration
+)
+
+
+mnn_data_dicer <- RunUMAP(mnn_data_dicer, reduction = "integrated.mnn", dims = 1:30, reduction.name = "mnn.umap", return.model = TRUE)
+mnn_data_dicer <- FindNeighbors(mnn_data_dicer, reduction = "integrated.mnn", dims = 1:30)
+mnn_data_dicer <- FindClusters(mnn_data_dicer, cluster.name	= "mnn_clusters", resolution = 1, random.seed = 2026, algorithm = 4)
+
+DimPlot(mnn_data_dicer, reduction = "mnn.umap", group.by = c("orig.ident", "mnn_clusters"))
+```
+
+```{r}
+mnn_umapdf_dicer <- combined_dicer@meta.data |>
+  select(orig.ident, mnn_clusters) |>
+  rownames_to_column("cell")
+
+mnn_hist_id_dicer <- plot_hist(mnn_umapdf_dicer, "mnn_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+mnn_hist_id_dicer
+```
+
+```{r}
+mnn_umapdf_dicer <- mnn_data_dicer@meta.data |>
+  select(orig.ident, mnn_clusters) |>
+  rownames_to_column("cell")
+
+mnn_hist_id_dicer <- plot_hist(mnn_umapdf_dicer, "mnn_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+mnn_hist_id_dicer
+```
+
+### CCA all
+
+```{r try_cca}
+
+
+#This was filtered to keep genes in common with all the objects, so get back the full object just in case
+features <- VariableFeatures(merged_data_dicer)
+
+VariableFeaturePlot(merged_data_dicer)
+
+rpca_data <- IntegrateLayers(
+  merged_data_dicer,
+  features = features,
+  method = RPCAIntegration
+)
+
+rpca_data <- RunUMAP(rpca_data, reduction = "integrated.dr", dims = 1:30, reduction.name = "rpca.umap", return.model = TRUE)
+rpca_data <- FindNeighbors(rpca_data, reduction = "integrated.dr", dims = 1:30)
+rpca_data <- FindClusters(rpca_data, cluster.name	= "rpca_clusters", resolution = .8, random.seed = 2026, algorithm = 4)
+
+
+rpca_clus_plot <- DimPlot(rpca_data, reduction = "rpca.umap", group.by = "rpca_clusters", label = TRUE)
+
+rpca_id_plot <- DimPlot(rpca_data, reduction = "rpca.umap", group.by = "orig.ident")
+
+DimPlot(rpca_data, reduction = "rpca.umap", group.by = "rpca_clusters", split.by = "orig.ident")
+
+rpca_plot <- rpca_clus_plot + rpca_id_plot
+
+rpca_umapdf <- rpca_data@meta.data |>
+  select(orig.ident, rpca_clusters) |>
+  rownames_to_column("cell")
+
+rpca_hist_id <- plot_hist(rpca_umapdf, "rpca_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+rpca_plot 
+rpca_hist_id
+
+
+qs_save(cca_data, "/home/sofia/Projects/etmr/defaria/mouse/cca_data.qs2", nthreads = 5)
+
+
+strsplit("mouse.12_KO3_SP_KO_12_KO3_SP_TTTGTTGGTGCTCTCT-1", "-")
+```
+
+```{r}
+cca_data <- RunUMAP(cca_data, reduction = "integrated.dr", dims = 1:30, reduction.name = "cca.umap", return.model = TRUE)
+cca_data <- FindNeighbors(cca_data, reduction = "integrated.dr", dims = 1:30)
+cca_data <- FindClusters(cca_data, cluster.name	= "cca_clusters", resolution = .8, random.seed = 2026, algorithm = 4)
+
+
+cca_clus_plot <- DimPlot(cca_data, reduction = "cca.umap", group.by = "cca_clusters", label = TRUE)
+
+cca_id_plot <- DimPlot(cca_data, reduction = "cca.umap", group.by = "orig.ident")
+
+DimPlot(cca_data, reduction = "cca.umap", group.by = "cca_clusters", split.by = "orig.ident")
+
+cca_plot <- cca_clus_plot + cca_id_plot
+
+cca_umapdf <- cca_data@meta.data |>
+  select(orig.ident, cca_clusters) |>
+  rownames_to_column("cell")
+
+cca_hist_id <- plot_hist(cca_umapdf, "cca_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+cca_plot + cca_hist_id
+```
+
+### Integrate with RPCA
+
+```{r best_so_far}
+
+merged_data <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/merged_data.rds")
+
+merged_data <- lapply(merged_data, function(x) {
+  counts <- GetAssayData(x, assay = "RNA", layer = "counts")
+  CreateSeuratObject(counts = counts)
+})
+
+
+merged_data <- lapply(merged_data, function(x) {
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x)
+  x
+})
+
+features <- SelectIntegrationFeatures(object.list = merged_data, nfeatures = 3000)
+
+
+merged_data <- setNames(lapply(names(merged_data), function(x) {
+  merged_data[[x]]@meta.data$orig.ident <- x
+  merged_data[[x]] <- subset(merged_data[[x]], features = features)
+  merged_data[[x]]
+  }),
+  names(merged_data)
+)
+
+
+merged_data <- merge(
+  x = merged_data[[1]],
+  y = merged_data[-1]
+)
+
+
+
+merged_data <- FindVariableFeatures(merged_data)
+merged_data <- ScaleData(merged_data)
+
+#RunPCA returns the object already, so there's no need to do {} x
+merged_data <- RunPCA(merged_data, seed.use = 2026, verbose = FALSE)
+
+#This was filtered to keep genes in common with all the objects, so get back the full object just in case
+
+features <- VariableFeatures(merged_data)
+
+VariableFeaturePlot(merged_data)
+
+#Integrate all the data by id using RPCA, which should be faster than CCA
+rpca_data <- IntegrateLayers(
+  merged_data,
+  features = features,
+  method = RPCAIntegration
+)
+
+#Run UMAP
+rpca_data <- RunUMAP(rpca_data, reduction = "integrated.dr", dims = 1:30, reduction.name = "rpca.umap", return.model = TRUE)
+
+rpca_data <- FindNeighbors(rpca_data, reduction = "integrated.dr", dims = 1:30)
+
+#Setting res at 0.8
+rpca_data <- FindClusters(rpca_data, cluster.name	= "rpca_clusters", resolution = 0.8, random.seed = 2026, algorithm = 4)
+
+
+rpca_clus_plot <- DimPlot(rpca_data, reduction = "rpca.umap", group.by = "rpca_clusters", label = TRUE)
+
+rpca_id_plot <- DimPlot(rpca_data, reduction = "rpca.umap", group.by = "orig.ident")
+
+rpca_id_plot_sep <- DimPlot(rpca_data, reduction = "rpca.umap", group.by = "rpca_clusters", split.by = "orig.ident", ncol = 3)
+
+rpca_plot <- rpca_clus_plot + rpca_id_plot
+
+rpca_data@meta.data["species"] <- sub("\\..*$", "", rpca_data@meta.data$orig.ident)
+
+condition_sample <- c("human.GSM8058157"= "tumor", 
+  "human.GSM8058158"= "tumor", 
+  "human.GSM8058159"= "tumor",
+  "human.GSM8058160"= "tumor", 
+  "human.GSM8058161"= "tumor", 
+  "human.GSM8058162"= "tumor",
+  "human.GSM8058163"= "tumor", 
+  "human.GSM8058164"= "tumor", 
+  "human.GSM8058165"= "tumor",
+  "mouse.12_WT1_SP"= "WT",  
+  "mouse.12_WT2_SP"= "WT",  
+  "mouse.12_WT3_SP"= "WT", 
+  "mouse.12_KO1_SP"= "KO",  
+  "mouse.12_KO2_SP"= "KO",  
+  "mouse.12_KO3_SP"= "KO") 
+
+tail(condition_sample[rpca_data@meta.data$orig.ident])
+tail(rpca_data@meta.data$orig.ident)
+
+rpca_data@meta.data["condition"] <- condition_sample[rpca_data@meta.data$orig.ident]
+
+rpca_umapdf <- rpca_data@meta.data |>
+  select(orig.ident, rpca_clusters, species, condition) |>
+  rownames_to_column("cell")
+
+rpca_species_plot <- DimPlot(rpca_data, reduction = "rpca.umap", group.by = "species", alpha = .6) 
+
+rpca_condition_plot <- DimPlot(rpca_data, reduction = "rpca.umap", group.by = "condition", alpha = .6) 
+
+#Histograms
+
+rpca_hist_id <- plot_hist(rpca_umapdf, "rpca_clusters", "orig.ident") + labs(title = "Sample ID", fill = "Sample ID")
+
+rpca_hist_species <- plot_hist(rpca_umapdf, "rpca_clusters", "species") + labs(title = "Species", fill = "Species")
+
+rpca_hist_condition <- plot_hist(rpca_umapdf, "rpca_clusters", "condition") + labs(title = "Condition", fill = "Condition")
+
+rpca_plot 
+rpca_hist_id
+```

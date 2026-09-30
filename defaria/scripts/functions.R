@@ -89,9 +89,26 @@ plot_with_patchwork <- function(colvar, condition, group1, group2) {
     plot_annotation(title = paste0(colvar, " distribution across integration methods in ETMR snRNA data")) 
 }
 
-plot_hist <- function(umapdf, x, colvar) {
 
-  h <- umapdf %>%
+
+plot_hist <- function(umapdf, x, colvar, label = NULL) {
+  if (!is.null(label)) {
+    h <- umapdf %>%
+    ggplot(aes(x = get(x),  fill = get(colvar), label = get(label))) +
+    geom_bar(position = "fill", width = .95) +
+    theme_classic() +
+    ggtitle(paste(colvar)) +
+    theme(axis.text.x = element_text(size = 13,angle = 45,
+                                     hjust = 1,
+                                     vjust = 1)) +
+    labs(x = x, fill = colvar, y = "Percent") +
+    scale_y_continuous(labels = scales::percent) + 
+    geom_text(aes(y = after_stat(count / tapply(count, x, sum)[x])),
+              stat = "count",
+              position = position_fill(vjust = 0.5), size = 3.5) + NoLegend()
+  }
+  else {
+    h <- umapdf %>%
     ggplot(aes(x = get(x),  fill = get(colvar))) +
     geom_bar(position = "fill") +
     theme_classic() +
@@ -99,7 +116,7 @@ plot_hist <- function(umapdf, x, colvar) {
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     labs(x = x, fill = colvar, y = "Percent") +
     scale_y_continuous(labels = scales::percent)
-  
+  }
   return(h)
 }
 
@@ -142,7 +159,6 @@ run_umap <- function (adata, pc=30, red="pca", kk=20, rr=0.8, integration = "uni
     return(adata)    
     }
 
-c("#F8766D", "#CD9600", "#7CAE00", "#00BE67", "#00BFC4", "#00A9FF", "#C77CFF", "#FF61CC")
 
 
 plot_hist_oneval <- function(umapdf, x, colvar, fill_c) {umapdf %>%
@@ -452,4 +468,7 @@ plot_cells_3d_fixed <- function(cds,
   p
 }
 
-"MetBrewer::Signac"
+
+
+
+

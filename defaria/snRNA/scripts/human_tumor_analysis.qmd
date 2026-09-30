@@ -93,127 +93,7 @@ ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/QC/res_human.png", res_hum
 ### Cell markers
 
 ```{r cellmarkers}
-cellmarkers <- list(
-
-  # Tumor stem / radial glia-like
-  RDG = c(
-    "PAX6","SOX2","VIM","NES",
-    "HES1","HES5","FABP7","SLC1A3",
-    "PTN","HMGA2"
-  ),
-
-  # Neuroepithelial progenitor
-  NEC = c(
-    "MDK",
-         "MIF",
-         "PSMA4",
-         "SMS",
-         "HSPA5",
-         "RANBP1",
-         "TPM1",
-         "IGFBP2",
-         "PFN1",
-         "OSTC",
-         "HMGA1",
-         "LAPTM4A",
-         "MYL12A",
-         "PDIA6",
-         "PRELID1",
-         "ARF4",
-         "OCIAD2",
-         "MAD2L1",
-         "PDIA3",
-         "KPNA2",
-         "AKR1B1",
-         "EIF4E",
-         "TMED9",
-         "MRPL42"
-  ),
-
-  # IPC
-  IPC= c(
-    "EOMES", "HES6", "NEUROD4"
-  ),
-
-  # Immature neurons
-  Neuroblasts = c(
-    "DCX","NCAM1",
-    "NEUROD1","NEUROD2",
-    "STMN2","TUBB3"
-  ),
-
-  # Excitatory neurons
-  Glut = c(
-    "SLC17A6", "SLC17A7", "SLC17A8"
-  ),
-
-  # Inhibitory neurons
-  GABA = c(
-    "GAD1","GAD2","DLX1","DLX2"
-  ),
-
-  # Mature neurons
-  Neurons = c(
-    "RBFOX3","SNAP25",
-    "SYT1","ELAVL4","NEFM", "MAP2", "GRIN1"
-  ),
-
-  # Astrocytes
-  Astrocytes = c(
-    "ALDH1L1","AQP4",
-    "GFAP","GLUL","SLC1A2"
-  ),
-
-  # OPC
-  OPC = c(
-    "PDGFRA","CSPG4",
-    "OLIG1","OLIG2","SOX10"
-  ),
-
-  # Oligodendrocytes
-  Oligodendrocytes = c(
-    "MBP","MOG","PLP1",
-    "CNP","MOBP"
-  ),
-
-  # Microglia
-  Microglia = c(
-    "AIF1","TMEM119",
-    "P2RY12","CX3CR1",
-    "TYROBP","HEXB"
-  ),
-
-  # Endothelial
-  Endothelial = c(
-    "CLDN5","FLT1",
-    "KDR","EMCN","PECAM1"
-  ),
-
-  # Pericytes
-  Pericytes = c(
-    "PDGFRB","RGS5",
-    "CSPG4","DES","MCAM"
-  ),
-
-  # Fibroblasts
-  Fibroblasts = c(
-    "COL1A1","COL1A2",
-    "DCN","LUM"
-  ),
-
-  # T cells
-  Tcell = c(
-    "CD2","CD3D",
-    "CD3E","PTPRC"
-  ),
-
-  # Cell cycle
-  Cycling = c(
-    "MKI67","TOP2A",
-    "AURKA","UBE2C"
-  )
-)
-
+source("~/Projects/etmr/defaria/cellmarkers.R") 
 cellmarkers_table <- unnest(enframe(cellmarkers), cols = c(value)) |>
   dplyr::rename(Celltype = name, Gene = value)
 ```
@@ -702,17 +582,17 @@ by_group <- SplitObject(integrated_data, split.by = "groups.1")
 gc()
 
 by_group <- lapply(by_group, function(x) {
-#   x <- DietSeurat(x, layers = "counts", assays = "RNA")
-#   x[["RNA"]] <- split(x[["RNA"]], f = x$orig.ident)
-#   x <- NormalizeData(x)
-#   x <- FindVariableFeatures(x)
-#   x <- ScaleData(x)
-#   x <- RunPCA(x)
-#   x <- IntegrateLayers(
-#   x,
-#   method = SeuratWrappers::FastMNNIntegration
-# )
-#   x <- FindNeighbors(x, reduction = "integrated.mnn")
+  x <- DietSeurat(x, layers = "counts", assays = "RNA")
+  x[["RNA"]] <- split(x[["RNA"]], f = x$orig.ident)
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x)
+  x <- ScaleData(x)
+  x <- RunPCA(x)
+  x <- IntegrateLayers(
+  x,
+  method = SeuratWrappers::FastMNNIntegration
+)
+  x <- FindNeighbors(x, reduction = "integrated.mnn")
   x <- RunUMAP(x, reduction = "integrated.mnn", dims = 1:30)
   x
 })
@@ -741,7 +621,7 @@ for (p in names(clustree_by_group)) {
 }
 
 clus_umap_by_group <- lapply(by_group, function(x) {
-  x <- DimPlot(x, group.by = paste0("mnn_res_", c(0.2, 0.5, 0.8, 1, 1.2, 1.5, 1.8, 2)))
+  x <- DimPlot(x, group.by = paste0("mnn_res_", c(0.2, 0.5, 0.8, 1, 1.2, 1.5, 1.8, 2)), label = TRUE)
   x
 })
   
@@ -749,13 +629,14 @@ for (p in names(clus_umap_by_group)) {
   ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/clustering/",p, "_cluster.png"), clus_umap_by_group[[p]], height = 14, width = 18, units = "in")
 }
 
-for (g in by_group)  {for (x in names(cellmarkers)) {
-    g <- AddModuleScore(
-      g,
+for (g in names(by_group))  {for (x in names(cellmarkers)) {
+    by_group[[g]] <- AddModuleScore(
+      by_group[[g]],
       features = cellmarkers[x],
       name = x
     )
-  }}
+}}
+
 
 features_umap_by_group <- lapply(by_group, function(x) FeaturePlot(x, features = paste0(names(cellmarkers),"1"), ncol = 4, 
                             reduction = "umap", 
@@ -769,63 +650,3627 @@ features_umap_by_group <- lapply(by_group, function(x) FeaturePlot(x, features =
 )) 
 
 for (p in names(features_umap_by_group)) {
-ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/features/",p, ".png"), features_umap_by_group[[p]], height = 20, width = 24, units = "in")}
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/features/2_",p, ".png"), features_umap_by_group[[p]], height = 20, width = 24, units = "in")}
+
+qs_save(by_group, "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+```
+
+```{r not_finished}
+# library(SingleR)
+# bygroup_sce <- lapply(by_group, function(x) {
+#   x <- JoinLayers(x)
+#   x <- as.SingleCellExperiment(x)
+#   x})
+# 
+# gc()
+# 
+jessa.ann <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/data/so_etmr1_annotated.rds")
+# 
+# jessa.ann <- as.SingleCellExperiment(jessa.ann)
+# 
+# pred.by.group <- lapply(bygroup_sce, function(x) {
+#   x <- SingleR(test = x, ref = jessa.ann, assay.type.test=1,
+#     labels = jessa.ann$cell_types_2_etmr1, de.method = "wilcox")
+#   x})
+# 
+# lapply(pred.by.group, function(x) table(x$pruned.labels))
+# 
+# by_group <- setNames(
+#   lapply(names(by_group), function(x) {
+#     AddMetaData(
+#       by_group[[x]],
+#       pred.by.group[[x]]$pruned.labels,
+#       col.name = "SingleR"
+#     )
+#   }),
+#   names(by_group)
+# )
+#  
+# 
+# 
+# by_group <- lapply(by_group, function(x) {
+#   x$SingleR <- gsub("RDG", "RGC", x$SingleR)
+#   x
+#   })
+# 
+# 
+# 
+# singler_plot_by_group <- setNames(lapply(names(by_group), function(x) {
+#   x <- DimPlot(by_group[[x]], group.by = "SingleR", label = TRUE, repel = TRUE) + ggtitle(paste("SingleR", x))
+#   x
+# }), names(by_group))
+# 
+# qs_save(by_group, "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+# 
+# ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/ko_singler_plot.png", singler_plot, width = 7, height = 6, units = "in")
+# 
+# singler_ann <- integrated_data@meta.data |>
+#   dplyr::select(orig.ident, celltype.1.8, SingleR, RNA_snn_res.1.8) |>
+#   summarize(n(), .by = c(RNA_snn_res.1.8, celltype.1.8, SingleR))
+# 
+# write.csv(singler_ann, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/ko_singler_ann.csv")
+# 
+
+```
+
+### Annotation
+
+#### Markers
+
+```{r}
+by_group <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+
+lapply(by_group, function(x) {
+  FeaturePlot(x,features = c("PXK", "MS4A1", "CD19", "CD74", "CD79A", "IGHD"), order = TRUE)
+})
+
+by_group_markers <- list()
+
+for (i in names(by_group)) {
+   DefaultAssay(by_group[[i]]) <- "RNA"
+
+  by_group[[i]] <- JoinLayers(
+    by_group[[i]],
+    assay = "RNA"
+  )
+  for (j in paste0("mnn_res_", c(1.2, 1.5, 1.8))) {
+    Idents(by_group[[i]]) <- j
+    by_group_markers[[i]][[j]]  <- FindAllMarkers(by_group[[i]])
+}}
+
+by_group_markers_top20 <- list()
+
+for (i in names(by_group_markers)) {
+  for (j in paste0("mnn_res_", c(1.2, 1.5, 1.8))) {
+  by_group_markers_top20[[i]][[j]] <- by_group_markers[[i]][[j]] |>
+  filter(pct.1 > .5) |>
+  arrange(desc(avg_log2FC)) |>
+  group_by(cluster) |>
+    top_n(20) |>
+    ungroup()
+  }
+}
+
+for (i in names(by_group_markers_top20)) {
+  for (j in paste0("mnn_res_", c(1.2, 1.5, 1.8))) {
+  write.csv(by_group_markers_top20[[i]][[j]], paste0("/home/sofia/Projects/etmr/defaria/snRNA/tables/cluster_markers/ByGroup/",i,"_",j,".csv"))
+    }
+  }
 
 ```
 
 ```{r}
-library(SingleR)
-bygroup_sce <- lapply(by_group, function(x) {
-  x <- JoinLayers(x)
-  x <- as.SingleCellExperiment(x)
-  x})
+
+by_group <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+
+source("~/Projects/etmr/defaria/scripts/functions.R")  
+
+human_umapdf <- lapply(by_group, function(x) {x@meta.data |>
+  dplyr::select(orig.ident,  paste0("mnn_res_", c(1.2, 1.5, 1.8, 2)), condition) |>
+  rownames_to_column("cell")})
+
+human_hist_id <- setNames(
+  lapply(human_umapdf, function(x) {
+    setNames(
+      lapply(
+        paste0("mnn_res_", c(1.2, 1.5, 1.8, 2)),
+        function(y) {
+          plot_hist(x, y, "orig.ident") +
+            labs(fill = "Sample ID") +
+            labs(title = paste0(
+              "Percentage of individual sample cells by cluster (res ",
+              y,
+              ")"
+            ))
+        }
+      ),
+      paste0("res_", c(1.2, 1.5, 1.8, 2))
+    )
+  }),
+  names(human_umapdf)
+)
+
+for (i in names(human_hist_id)) {
+  for(j in c(1.2, 1.5, 1.8, 2)) {
+   ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/histograms/", paste0(i, "_",j), ".png"), human_hist_id[[i]][[paste0("res_",j)]], width = 8, height = 6, units = "in") 
+  }
+}
+
+
+human_tumor_long <- lapply(by_group, function(x) {x@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    mnn_res_0.8,
+    mnn_res_1.2,
+    mnn_res_1,
+    mnn_res_1.5, 
+    mnn_res_1.8,
+    mnn_res_2,
+    condition,
+    paste0(names(cellmarkers),"1")
+    ) |>
+  tidyr::pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+    mnn_res_0.8,
+    mnn_res_1.2,
+    mnn_res_1,
+    mnn_res_1.5, 
+    mnn_res_1.8,
+    mnn_res_2,
+              condition), names_to = "cell_type"
+    )})
+
+
+violin_human_tumor <- lapply(names(human_tumor_long), function(i) {
+
+  lapply(c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+           "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2"),
+         function(j) {
+
+           human_tumor_long[[i]] |>
+             dplyr::filter(cell_type %in% paste0(names(cellmarkers), "1")) |>
+             dplyr::group_by(cell_type, .data[[j]]) |>
+             dplyr::filter(
+               mean(value, na.rm = TRUE) > 0 |
+               median(value, na.rm = TRUE) > 0
+             ) |>
+             dplyr::ungroup() |>
+             ggplot(aes(x = .data[[j]], y = value)) +
+             geom_violin() +
+             facet_wrap(~cell_type, scales = "free") +
+             labs(title = paste(i, j), x = j)
+
+         })
+
+})
+
+names(violin_human_tumor) <- names(human_tumor_long)
+
+violin_human_tumor <- lapply(violin_human_tumor, function(x) {
+  names(x) <- c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+           "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2")
+  x
+})
+
+for (i in names(violin_human_tumor)) {
+  for(j in c(1.2, 1.5, 1.8, 2)) {
+   ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/violin/2_", paste0(i, "_",j), ".png"), violin_human_tumor[[i]][[paste0("mnn_res_",j)]], width = 18, height = 16, units = "in") 
+  }
+}
+
+a_1.5 <- c(
+   "1" = "RGC",
+  "2" = "RGC",
+  "3" = "RGC",
+  "4" = "NEC-like_RGC",
+  "5" = "NEC-like_RGC",
+  "6" = "RGC",
+  "7" = "RGC",
+  "8" = "RGC",
+  "9" = "RGC",
+  "10" = "RGC",
+  "11" = "NEC-like_RGC",
+  "12" = "RGC",
+  "13" = "NEC-like_RGC",
+  "14" = "RGC",
+  "15" = "RGC",
+  "16" = "NEC-like_RGC",
+  "17" = "RGC",
+  "18" = "RGC",
+  "19" = "RGC"
+)
+
+a_1.8 <- c(
+   "1" = "RGC",
+  "2" = "RGC",
+  "3" = "RGC",
+  "4" = "NEC-like_RGC",
+  "5" = "NEC-like_RGC",
+  "6" = "RGC",
+  "7" = "RGC",
+  "8" = "RGC",
+  "9" = "RGC",
+  "10" = "RGC",
+  "11" = "RGC",
+  "12" = "RGC",
+  "13" = "RGC",
+  "14" = "RGC",
+  "15" = "RGC",
+  "16" = "NEC-like_RGC",
+  "17" = "NEC-like_RGC",
+  "18" = "RGC",
+  "19" = "RGC",
+  "20" = "RGC",
+  "21" = "RGC",
+  "22" = "RGC"
+)
+
+a_2 <- c(
+   "1" = "RGC",
+  "2" = "NEC-like_RGC",
+  "3" = "RGC",
+  "4" = "RGC",
+  "5" = "NEC-like_RGC",
+  "6" = "RGC",
+  "7" = "RGC",
+  "8" = "NEC-like_RGC",
+  "9" = "RGC",
+  "10" = "RGC",
+  "11" = "RGC",
+  "12" = "RGC",
+  "13" = "RGC",
+  "14" = "RGC",
+  "15" = "RGC",
+  "16" = "NEC-like_RGC",
+  "17" = "NEC-like_RGC",
+  "18" = "RGC",
+  "19" = "RGC",
+  "20" = "RGC",
+  "21" = "RGC",
+  "22" = "NEC-like_RGC",
+  "23" = "RGC",
+  "24" = "RGC"
+)
+
+
+b_1.8 <- c(
+  "1" = "IPC",
+  "2" = "IPC",
+  "3" = "IPC",
+  "4" = "Neurons_immature",
+  "5" = "Neurons_immature",
+  "6" = "Neurons_immature",
+  "7" = "Neurons_immature",
+  "8" = "Neurons_immature",
+  "9" = "Neurons_immature",
+  "10" = "Neurons_immature",
+  "11" = "Neurons_immature",
+  "12" = "IPC",
+  "13" = "IPC",
+  "14" = "Neurons_immature"
+)
+
+c_1.5 <- c(
+   "1" = "Neurons_immature",
+  "2" = "Neurons",
+  "3" = "Neurons_immature",
+  "4" = "Neurons_immature",
+  "5" = "Neurons_immature",
+  "6" = "Neurons_immature",
+  "7" = "Neurons_immature",
+  "8" = "Neurons_immature",
+  "9" = "Neurons_immature",
+  "10" = "Neurons_immature",
+  "11" = "Neurons_immature",
+  "12" = "Neurons_immature",
+  "13" = "Neurons_immature",
+  "14" = "Neurons",
+  "15" = "Neurons_immature",
+  "16" = "RGC"
+)
+
+c_1.8 <- c(
+   "1" = "Neurons",
+  "2" = "Neurons_immature_GABA",
+  "3" = "Neurons_immature_GABA",
+  "4" = "Neurons_immature",
+  "5" = "Neurons_immature_GABA",
+  "6" = "Neurons_immature_Glut",
+  "7" = "Neurons_immature_GABA",
+  "8" = "Neurons_immature_GABA",
+  "9" = "Neurons_immature_Glut",
+  "10" = "Neurons_immature",
+  "11" = "Neurons_immature_Glut",
+  "12" = "Neurons_immature",
+  "13" = "Neurons_immature",
+  "14" = "Neurons_immature_GABA",
+  "15" = "Neurons",
+  "16" = "Neurons_immature",
+  "17" = "Neurons_immature_GABA",
+  "18" = "Neurons_immature",
+  "19" = "Neurons_immature_GABA",
+  "20" = "RGC"
+)
+
+c_2 <- c(
+   "1" = "Neurons_immature",
+  "2" = "Neurons_immature",
+  "3" = "Neurons_immature",
+  "4" = "Neurons",
+  "5" = "Neurons_immature",
+  "6" = "Neurons_immature",
+  "7" = "Neurons_immature",
+  "8" = "Neurons_immature",
+  "9" = "Neurons",
+  "10" = "Neurons_immature",
+  "11" = "Neurons_immature",
+  "12" = "Neurons_immature",
+  "13" = "Neurons_immature",
+  "14" = "Neurons",
+  "15" = "Neurons_immature",
+  "16" = "Neurons_immature",
+  "17" = "Neurons_immature",
+  "18" = "Neurons_immature",
+  "19" = "Neurons",
+  "20" = "Neurons_immature",
+  "21" = "Neurons_immature",
+  "22" = "Neurons_immature",
+  "23" = "Neurons_immature",
+  "24" = "Neurons"
+)
+
+d_1.5 <- c(
+   "1" = "Neurons",
+  "2" = "RGC",
+  "3" = "Neurons",
+  "4" = "Neurons",
+  "5" = "Neurons",
+  "6" = "NEC-like_RGC",
+  "7" = "Neurons_immature",
+  "8" = "Neurons_immature",
+  "9" = "Neurons_immature",
+  "10" = "RGC",
+  "11" = "Neurons_immature",
+  "12" = "Neurons_immature",
+  "13" = "Neurons",
+  "14" = "Neurons"
+)
+
+excluded_1.2 <- c(
+  "1" = "Pericytes",
+  "2" = "RGC",
+  "3" = "RGC",
+  "4" = "Oligodendrocytes",
+  "5" = "Microglia",
+  "6" = "Microglia",
+  "7" = "Endothelial",
+  "8" = "RGC",
+  "9" = "Lymphocytes",
+  "10" = "Astrocytes",
+  "11" = "RGC",
+  "12" = "Microglia",
+  "13" = "OPC",
+  "14" = "RGC"
+)
+
+DimPlot(by_group$excluded, group.by = "mnn_res_1.2", label = TRUE)
+
+res_list <- list(
+  "A" = list(
+    "celltype_1.5" = a_1.5, 
+    "celltype_1.8" = a_1.8, 
+    "celltype_2" = a_2
+  ),
+  "B" = list(
+    "celltype_1.8" = b_1.8
+  ),
+  "C" = list(
+    "celltype_1.5" = c_1.5, 
+    "celltype_1.8" = c_1.8, 
+    "celltype_2" = c_2
+  ),
+  "D" = list(
+    "celltype_1.5" = d_1.5
+  ),
+  "excluded" = list(
+    "celltype_1.2" = excluded_1.2
+  )
+)
+
+
+celltype_order <- c("NEC-like_RGC", "RGC", "IPC","Neurons_immature", "Neurons_immature_GABA", "Neurons_immature_Glut", "Neurons", "Pericytes", "Endothelial", "Astrocytes", "Microglia", "OPC","Oligodendrocytes", "Lymphocytes")
+
+for (x in names(by_group)) {
+    for (z in names(res_list[[x]])) {
+      Idents(by_group[[x]]) <- gsub("celltype", "mnn_res", z)
+      
+      by_group[[x]]@meta.data[z]  <- factor(res_list[[x]][[z]][
+          as.character(Idents(by_group[[x]]))], levels = celltype_order)
+    }
+}
+
+celltype_colors <-  c("Neurons" = "#822faf",
+"Neurons_immature"   = "#F15A8A",
+"Neurons_immature_GABA" = "#fbc1b4", 
+"Neurons_immature_Glut" = "#ff90b3",
+"IPC"                = "#F6C453",
+
+"NEC-like_RGC"       = "#3FAF6B",
+"RGC"                = "#7ACB5A",
+
+"Pericytes"          = "#5ED7C4",
+"Endothelial"        = "#2AA7A1",
+
+"Astrocytes"         = "#69C6E8",
+"Microglia"          = "#AFC7E9",
+
+"Oligodendrocytes"   = "#BFC3C7",
+"OPC"                = "#7C848C",
+
+"Lymphocytes"        = "#2C6EAA")
+
+
+
+celltype_plot_human <- lapply(by_group, function(x) {
+  lapply(
+    grep("^celltype_", colnames(x@meta.data), value = TRUE),
+    function(y) {
+      DimPlot(
+        x,
+        reduction = "umap",
+        group.by = y,
+        label = TRUE,
+        raster = FALSE,
+        pt.size = 0.4,
+        shuffle = TRUE,
+        alpha = 0.7,
+        label.size = 4,
+        label.box = FALSE,
+        repel = TRUE,
+        cols = celltype_colors
+      )
+    }
+  )
+})
+
+celltype_plot_human <- lapply(
+  names(celltype_plot_human), function(x) {
+    names(celltype_plot_human[[x]]) <- names(res_list[[x]])
+    celltype_plot_human[[x]]
+    }
+  )
+
+names(celltype_plot_human) <- names(by_group)
+
+for (i in names(celltype_plot_human)) {
+  for(j in c("celltype_1.2", "celltype_1.5", "celltype_1.8", "celltype_2")) {
+   if (j %in% names(celltype_plot_human[[i]])) {
+     ggsave(paste0(
+       "/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/celltype/", paste0(i, "_",j), ".png"), celltype_plot_human[[i]][[j]], width = 10, height = 6, units = "in")
+     } 
+  }
+}
+
+human_tumor <- lapply(by_group, function(x) {x@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    mnn_res_0.8,
+    mnn_res_1.2,
+    mnn_res_1,
+    mnn_res_1.5, 
+    mnn_res_1.8,
+    mnn_res_2,
+    condition,
+    grep("^celltype_", colnames(x@meta.data), value = TRUE)
+    )}) 
+
+
+human_tumor$A <- human_tumor$A |> select(-c("mnn_res_0.8", 
+    "mnn_res_1",
+    "mnn_res_1.2")) 
+
+human_tumor$B <- human_tumor$B |> select(-c("mnn_res_0.8", 
+    "mnn_res_1",
+    "mnn_res_1.2",
+    "mnn_res_1.5",
+    "mnn_res_2")) 
+
+human_tumor$C <- human_tumor$C |> select(-c("mnn_res_0.8", 
+    "mnn_res_1",
+    "mnn_res_1.2")) 
+
+human_tumor$D <- human_tumor$D |> select(-c("mnn_res_0.8", 
+    "mnn_res_1",
+    "mnn_res_1.2",
+    "mnn_res_1.8",
+    "mnn_res_2")) 
+
+human_tumor$excluded <- human_tumor$excluded |> select(-c("mnn_res_0.8", 
+    "mnn_res_1",
+    "mnn_res_1.5",
+    "mnn_res_1.8",
+    "mnn_res_2")) 
+
+df_cols <- c("cell", "orig.ident")
+
+joined_dfs <- lapply(c("1.5", "1.8", "2"), function(x) {
+      bind_rows(human_tumor$A |> 
+        dplyr::select(all_of(df_cols), paste0("mnn_res_", x), paste0("celltype_", x)) |> 
+        dplyr::rename(mnn_res = paste0("mnn_res_", x), celltype = paste0("celltype_", x)),
+                human_tumor$B |> 
+        dplyr::rename(mnn_res = mnn_res_1.8, celltype = celltype_1.8),
+                human_tumor$C |> 
+                  select(all_of(df_cols), paste0("mnn_res_", x), paste0("celltype_", x)) |> 
+          dplyr::rename(mnn_res = paste0("mnn_res_", x), celltype = paste0("celltype_", x)),
+                human_tumor$D |> 
+        dplyr::rename(mnn_res = mnn_res_1.5, celltype = celltype_1.5),
+                human_tumor$excluded |> 
+        dplyr::rename(mnn_res = mnn_res_1.2, celltype = celltype_1.2))
+    }) 
+
+names(joined_dfs) <- c("1.5", "1.8", "2")
+
+joined_dfs <- lapply(joined_dfs, function(x) {
+  x$orig.ident <- factor(x$orig.ident, levels = c("GSM8058163", "GSM8058161", "GSM8058158", "GSM8058164", "GSM8058159", "GSM8058160",
+"GSM8058157", "GSM8058162", "GSM8058165"))
+  x
+    })
+
+human_hist_id_celltype <- lapply(names(joined_dfs), function(x) {
+          plot_hist(joined_dfs[[x]], "orig.ident", "celltype") +
+            labs(fill = "Cell type") +
+            labs(title = paste0(
+              "Percentage of individual sample cells by celltype (group A and C res ",
+              gsub("celltype","", x),
+              ")"
+            )) +
+    scale_fill_manual(values = celltype_colors)
+        }
+      )
+
+names(human_hist_id_celltype) <- c("1.5", "1.8", "2")
+
+for (i in names(human_hist_id_celltype)) {
+   ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/histograms/", paste0("celltype_groupA_C_res", i), ".png"), human_hist_id_celltype[[i]], width = 8, height = 6, units = "in") 
+  }
+
+
+qs_save(by_group, "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+```
+
+```{r etmr_signature}
+by_group <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+
+signt_etmr <- read.csv("/home/sofia/Projects/etmr/defaria/snRNA/tables/signature.csv")
+
+
+#all the objects have the same features
+
+signt_etmr <- as.list(signt_etmr)
+signt_etmr <- lapply(signt_etmr, function(x) {
+  x <- x[x %in% rownames(by_group$A)]
+  x
+})
+
+
+for (g in names(by_group))  {
+  for (x in names(signt_etmr)) {
+    by_group[[g]] <- AddModuleScore(
+      by_group[[g]],
+      features = signt_etmr[x],
+      name = x
+    )
+  }}
+
+etmr_umap_by_group <- lapply(by_group, function(x) FeaturePlot(x, features = paste0(names(signt_etmr),"1"), ncol = 2, 
+                            reduction = "umap", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, raster = FALSE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+)) 
+
+for (p in names(etmr_umap_by_group)) {
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/features/etmr",p, ".png"), etmr_umap_by_group[[p]], height = 7, width = 14, units = "in")}
+
+
+human_tumor_long <- lapply(by_group, function(x) {x@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    mnn_res_0.8,
+    mnn_res_1.2,
+    mnn_res_1,
+    mnn_res_1.5, 
+    mnn_res_1.8,
+    mnn_res_2,
+    condition,
+    paste0(names(signt_etmr),"1")
+    ) |>
+  tidyr::pivot_longer(
+    cols = -c(cell, 
+              orig.ident, 
+    mnn_res_0.8,
+    mnn_res_1.2,
+    mnn_res_1,
+    mnn_res_1.5, 
+    mnn_res_1.8,
+    mnn_res_2,
+              condition), names_to = "cell_type"
+    )})
+
+
+violin_human_tumor_etmr <- lapply(names(human_tumor_long), function(i) {
+
+  lapply(c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+           "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2"),
+         function(j) {
+
+           human_tumor_long[[i]] |>
+             dplyr::filter(cell_type %in% paste0(names(signt_etmr), "1")) |>
+             dplyr::group_by(cell_type, .data[[j]]) |>
+             dplyr::filter(
+               mean(value, na.rm = TRUE) != 0 |
+               median(value, na.rm = TRUE) != 0
+             ) |>
+             dplyr::ungroup() |>
+             ggplot(aes(x = .data[[j]], y = value)) +
+             geom_violin() +
+             facet_wrap(~cell_type, scales = "free") +
+             labs(title = paste(i, j), x = j)
+
+         })
+
+})
+
+names(violin_human_tumor_etmr) <- names(human_tumor_long)
+
+violin_human_tumor_etmr <- lapply(violin_human_tumor_etmr, function(x) {
+  names(x) <- c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+           "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2")
+  x
+})
+
+for (i in names(violin_human_tumor_etmr)) {
+  for(j in c(1.2, 1.5, 1.8, 2)) {
+   ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/violin/etmr", paste0(i, "_",j), ".png"), violin_human_tumor_etmr[[i]][[paste0("mnn_res_",j)]], width = 16, height = 8, units = "in") 
+  }
+}
+
+a_1.5 <- c(
+   "1" = "ETMR",
+  "2" = "ETMR",
+  "3" = "ETMR",
+  "4" = "ETMR",
+  "5" = "ETMR",
+  "6" = "ETMR",
+  "7" = "ETMR",
+  "8" = "ETMR",
+  "9" = "ETMR",
+  "10" = "ETMR",
+  "11" = "ETMR",
+  "12" = "ETMR",
+  "13" = "ETMR",
+  "14" = "ETMR",
+  "15" = "ETMR",
+  "16" = "ETMR",
+  "17" = "ETMR",
+  "18" = "ETMR",
+  "19" = "ETMR"
+)
+
+a_1.8 <- c(
+   "1" = "ETMR",
+  "2" = "ETMR",
+  "3" = "ETMR",
+  "4" = "ETMR",
+  "5" = "ETMR",
+  "6" = "ETMR",
+  "7" = "ETMR",
+  "8" = "ETMR",
+  "9" = "ETMR",
+  "10" = "ETMR",
+  "11" = "ETMR",
+  "12" = "ETMR",
+  "13" = "ETMR",
+  "14" = "ETMR",
+  "15" = "ETMR",
+  "16" = "ETMR",
+  "17" = "ETMR",
+  "18" = "ETMR",
+  "19" = "ETMR",
+  "20" = "ETMR",
+  "21" = "ETMR",
+  "22" = "ETMR"
+)
+
+a_2 <- c(
+  "1" = "ETMR",
+  "2" = "ETMR",
+  "3" = "ETMR",
+  "4" = "ETMR",
+  "5" = "ETMR",
+  "6" = "ETMR",
+  "7" = "ETMR",
+  "8" = "ETMR",
+  "9" = "ETMR",
+  "10" = "ETMR",
+  "11" = "ETMR",
+  "12" = "ETMR",
+  "13" = "ETMR",
+  "14" = "ETMR",
+  "15" = "ETMR",
+  "16" = "ETMR",
+  "17" = "ETMR",
+  "18" = "ETMR",
+  "19" = "ETMR",
+  "20" = "ETMR",
+  "21" = "ETMR",
+  "22" = "ETMR",
+  "23" = "ETMR",
+  "24" = "ETMR"
+)
+
+
+b_1.8 <- c(
+  "1" = "ETMR",
+  "2" = "ETMR",
+  "3" = "ETMR",
+  "4" = "ETMR",
+  "5" = "ETMR",
+  "6" = "ETMR",
+  "7" = "ETMR",
+  "8" = "ETMR",
+  "9" = "ETMR",
+  "10" = "ETMR",
+  "11" = "ETMR",
+  "12" = "ETMR",
+  "13" = "ETMR",
+  "14" = "ETMR"
+)
+
+c_1.5 <- c(
+   "1" = "ETMR",
+  "2" = "ETMR",
+  "3" = "ETMR",
+  "4" = "ETMR",
+  "5" = "ETMR",
+  "6" = "ETMR",
+  "7" = "ETMR",
+  "8" = "ETMR",
+  "9" = "ETMR",
+  "10" = "ETMR",
+  "11" = "ETMR",
+  "12" = "ETMR",
+  "13" = "ETMR",
+  "14" = "not_ETMR",
+  "15" = "ETMR",
+  "16" = "ETMR"
+)
+
+c_1.8 <- c(
+   "1" = "ETMR",
+  "2" = "ETMR",
+  "3" = "ETMR",
+  "4" = "ETMR",
+  "5" = "ETMR",
+  "6" = "ETMR",
+  "7" = "ETMR",
+  "8" = "ETMR",
+  "9" = "ETMR",
+  "10" = "ETMR",
+  "11" = "ETMR",
+  "12" = "ETMR",
+  "13" = "ETMR",
+  "14" = "ETMR",
+  "15" = "not_ETMR",
+  "16" = "ETMR",
+  "17" = "ETMR",
+  "18" = "ETMR",
+  "19" = "ETMR",
+  "20" = "ETMR"
+)
+
+c_2 <- c(
+   "1" = "ETMR",
+  "2" = "ETMR",
+  "3" = "ETMR",
+  "4" = "not_ETMR",
+  "5" = "ETMR",
+  "6" = "ETMR",
+  "7" = "ETMR",
+  "8" = "ETMR",
+  "9" = "ETMR",
+  "10" = "ETMR",
+  "11" = "ETMR",
+  "12" = "ETMR",
+  "13" = "ETMR",
+  "14" = "ETMR",
+  "15" = "ETMR",
+  "16" = "ETMR",
+  "17" = "ETMR",
+  "18" = "ETMR",
+  "19" = "not_ETMR",
+  "20" = "ETMR",
+  "21" = "ETMR",
+  "22" = "ETMR",
+  "23" = "ETMR",
+  "24" = "not_ETMR"
+)
+
+d_1.5 <- c(
+   "1" = "ETMR",
+  "2" = "ETMR",
+  "3" = "ETMR",
+  "4" = "ETMR",
+  "5" = "ETMR",
+  "6" = "ETMR",
+  "7" = "ETMR",
+  "8" = "ETMR",
+  "9" = "ETMR",
+  "10" = "ETMR",
+  "11" = "ETMR",
+  "12" = "ETMR",
+  "13" = "ETMR",
+  "14" = "not_ETMR"
+)
+
+excluded_1.2 <- c(
+  "1" = "not_ETMR",
+  "2" = "ETMR",
+  "3" = "ETMR",
+  "4" = "not_ETMR",
+  "5" = "not_ETMR",
+  "6" = "not_ETMR",
+  "7" = "not_ETMR",
+  "8" = "ETMR",
+  "9" = "ETMR",
+  "10" = "not_ETMR",
+  "11" = "ETMR",
+  "12" = "not_ETMR",
+  "13" = "not_ETMR",
+  "14" = "ETMR"
+)
+
+res_list <- list(
+  "A" = list(
+    "etmr_1.5" = a_1.5, 
+    "etmr_1.8" = a_1.8, 
+    "etmr_2" = a_2
+  ),
+  "B" = list(
+    "etmr_1.8" = b_1.8
+  ),
+  "C" = list(
+    "etmr_1.5" = c_1.5, 
+    "etmr_1.8" = c_1.8, 
+    "etmr_2" = c_2
+  ),
+  "D" = list(
+    "etmr_1.5" = d_1.5
+  ),
+  "excluded" = list(
+    "etmr_1.2" = excluded_1.2
+  )
+)
+
+
+for (x in names(by_group)) {
+    for (z in names(res_list[[x]])) {
+      Idents(by_group[[x]]) <- gsub("etmr", "mnn_res", z)
+      
+      by_group[[x]]@meta.data[z]  <- factor(res_list[[x]][[z]][
+          as.character(Idents(by_group[[x]]))])
+    }
+}
+
+etmr_colors <-  c("not_ETMR" = "#465775",
+"ETMR"   = "#ef6f6c")
+
+
+etmr_plot_human <- lapply(by_group, function(x) {
+  lapply(
+    grep("^etmr_", colnames(x@meta.data), value = TRUE),
+    function(y) {
+      DimPlot(
+        x,
+        reduction = "umap",
+        group.by = y,
+        label = TRUE,
+        raster = FALSE,
+        pt.size = 0.4,
+        shuffle = TRUE,
+        alpha = 0.7,
+        label.size = 4,
+        label.box = FALSE,
+        repel = TRUE,
+        cols = etmr_colors
+      )
+    }
+  )
+})
+
+etmr_plot_human <- lapply(
+  names(etmr_plot_human), function(x) {
+    names(etmr_plot_human[[x]]) <- names(res_list[[x]])
+    etmr_plot_human[[x]]
+    }
+  )
+
+names(etmr_plot_human) <- names(by_group)
+
+for (i in names(etmr_plot_human)) {
+  for(j in c("etmr_1.2", "etmr_1.5", "etmr_1.8", "etmr_2")) {
+   if (j %in% names(etmr_plot_human[[i]])) {
+     ggsave(paste0(
+       "/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/celltype/", paste0(i, "_",j), ".png"), etmr_plot_human[[i]][[j]], width = 8, height = 6, units = "in")
+     } 
+  }
+}
+
+celltype_plot_human
+etmr_plot_human
+
+View(by_group_markers$excluded |> filter(gene %in% c("P2RY12", "TMEM119", "HEXB", "CX3CR1", "C1QA", "APOE",
+"LPL",
+"CST7",
+"AXL",
+"SPP1",
+"CLEC7A",
+"GPNMB",
+"TREM2")))
+
+immune_plots <- lapply(by_group, function(x) FeaturePlot(x, features= c("P2RY12", "TMEM119", "HEXB", "CX3CR1", "C1QA", "APOE",
+"LPL",
+"CST7",
+"AXL",
+"SPP1",
+"CLEC7A",
+"GPNMB",
+"TREM2"), order = TRUE))
+
+immune_violin_plots <- lapply(by_group, function(x) lapply(grep("^mnn_res_", colnames(x@meta.data), value = TRUE), function(y) VlnPlot(x, features= c("P2RY12", "TMEM119", "HEXB", "CX3CR1", "C1QA", "APOE",
+"LPL",
+"CST7",
+"AXL",
+"SPP1",
+"CLEC7A",
+"GPNMB",
+"TREM2"), ncol = 3)))
+
+immune_violin_plots <- lapply(names(immune_violin_plots), function(x) {
+  names(immune_violin_plots[[x]]) <- grep("^mnn_res_", colnames(by_group[[x]]@meta.data), value = TRUE)
+  immune_violin_plots[[x]]
+    })
+
+for (i in names(immune_violin_plots)) {
+  for (j in grep("^mnn_res_", colnames(by_group[[i]]@meta.data), value = TRUE)) {
+     ggsave(paste0(
+       "/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/celltype/immune/", paste0(i, "_", j), ".png"), immune_violin_plots[[i]][[j]], width = 16, height = 18, units = "in")
+  } 
+}
+
+qs_save(by_group, "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+```
+
+#### ETMR score
+
+```{r etmr_score, warning=FALSE}
+
+
+for (x in names(by_group)) {
+      by_group[[x]]  <- AddMetaData(by_group[[x]], by_group[[x]]$Positive1 - by_group[[x]]$Negative1, col.name = "etmr_score")
+    }
+
+
+
+violin_human_tumor_etmr <- lapply(violin_human_tumor_etmr, function(x) {
+  names(x) <- c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+           "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2")
+  x
+})
+
+human_tumor_long <- lapply(by_group, function(x) {x@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    mnn_res_0.8,
+    mnn_res_1.2,
+    mnn_res_1,
+    mnn_res_1.5, 
+    mnn_res_1.8,
+    mnn_res_2,
+    condition,
+    etmr_score
+    )})
+
+
+violin_human_tumor_etmr_score <- lapply(names(human_tumor_long), function(i) {
+
+  lapply(c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+           "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2"),
+         function(j) {
+           human_tumor_long[[i]] |>
+             dplyr::ungroup() |>
+             ggplot(aes(x = .data[[j]], y = etmr_score)) +
+             geom_violin() +
+             labs(title = paste(i,j), x = j)
+
+         })
+
+})
+
+names(violin_human_tumor_etmr) <- names(human_tumor_long)
+
+violin_human_tumor_etmr <- lapply(violin_human_tumor_etmr, function(x) {
+  names(x) <- c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+           "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2")
+  x
+})
+
+for (i in names(violin_human_tumor_etmr)) {
+  for(j in c(1.2, 1.5, 1.8, 2)) {
+   ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/violin/etmr", paste0(i, "_",j), ".png"), violin_human_tumor_etmr[[i]][[paste0("mnn_res_",j)]], width = 16, height = 8, units = "in") 
+  }
+}
+
+qs_save(by_group, "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+```
+
+```{r}
+
+by_group <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+
+library(ggforce)
+
+etmr_scale <- list()
+
+for (i in names(by_group)) {
+#  for (j in c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+ #          "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2")) {
+  for (j in grep("^celltype_", colnames(by_group[[i]]@meta.data), value = TRUE)) {
+    df <- FetchData(
+      by_group[[i]],
+      vars = c("etmr_score", j, "umap_1", "umap_2")
+    )
+    
+    centers <- df %>%
+      group_by(.data[[j]]) %>%
+      summarize(
+        umap_1 = mean(umap_1),
+        umap_2 = mean(umap_2),
+        .groups = "drop"
+      )
+    
+
+    p <- ggplot(df, aes(umap_1, umap_2, color = etmr_score)) +
+      geom_point(size = 0.3) +
+      scale_color_gradient2(
+        low = "blue",
+        mid = "lightyellow",
+        high = "red",
+        midpoint = 0
+      ) 
+    
+    df_hull <- df %>%
+      group_by(.data[[j]]) %>%
+      mutate(
+        center_x = mean(umap_1),
+        center_y = mean(umap_2),
+        dist = sqrt((umap_1 - center_x)^2 + (umap_2 - center_y)^2)
+      ) %>%
+      filter(dist <= quantile(dist, 0.95)) %>%   # keep closest 95% of points
+      ungroup()
+
+    p <- p +
+      ggforce::geom_mark_hull(data = df_hull,
+      aes(
+        umap_1,
+        umap_2,
+        color = factor(.data[[j]]),
+        group = factor(.data[[j]])
+      ),
+      concavity = 3,
+        linewidth = .3,
+        color = "black",
+        fill = NA, expand = unit(1, "mm")
+    ) +
+      geom_text(
+        data = centers,
+        aes(
+          umap_1,
+          umap_2,
+          label = .data[[j]]
+        ),
+        color = "black",
+        size = 4,
+        fontface = "bold"
+      )
+ etmr_scale[[i]][[j]] <- p }
+  
+}
+
+
+names(etmr_scale) <- names(human_tumor_long)
+
+etmr_scale <- lapply(etmr_scale, function(x) {
+  names(x) <- c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+           "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2")
+  x
+})
+
+ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/violin/etmr", paste0(i, "_",j), ".png"), violin_human_tumor_etmr[[i]][[paste0("mnn_res_",j)]], width = 16, height = 8, units = "in")
+
+all_etmr_score <- (etmr_scale$A$celltype_1.8 + theme_classic() + ggtitle("ETMR score for group A") +
+etmr_scale$B$celltype_1.8 + theme_classic() + ggtitle("ETMR score for group B")) /
+(etmr_scale$C$celltype_1.8 + theme_classic() + ggtitle("ETMR score for group C") +
+etmr_scale$D$celltype_1.5 + theme_classic() + ggtitle("ETMR score for group D")) /
+(etmr_scale$excluded$celltype_1.2 + theme_classic() + ggtitle("ETMR score for group E") + patchwork::plot_spacer())
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/features/all_etmr_score.png", all_etmr_score, width = 14, height = 16, units = "in")
+```
+
+```{r}
+etmr_scale <- list()
+
+for (i in names(by_group)) {
+#  for (j in c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+ #          "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2")) {
+  for (j in grep("^celltype_", colnames(by_group[[i]]@meta.data), value = TRUE)) {
+    df <- FetchData(
+      by_group[[i]],
+      vars = c("etmr_score", j, "umap_1", "umap_2")
+    )
+    
+    centers <- df %>%
+      group_by(.data[[j]]) %>%
+      summarize(
+        umap_1 = mean(umap_1),
+        umap_2 = mean(umap_2),
+        .groups = "drop"
+      )
+    
+
+    p <- ggplot(df, aes(umap_1, umap_2, color = .data[[j]])) +
+      geom_point(size = 0.3) 
+    
+    df_hull <- df %>%
+      group_by(.data[[j]]) %>%
+      mutate(
+        center_x = mean(umap_1),
+        center_y = mean(umap_2),
+        dist = sqrt((umap_1 - center_x)^2 + (umap_2 - center_y)^2)
+      ) %>%
+      filter(dist <= quantile(dist, 0.95)) %>%   # keep closest 95% of points
+      ungroup()
+
+    p <- p +
+      ggforce::geom_mark_hull(data = df_hull,
+      aes(
+        umap_1,
+        umap_2,
+        color = factor(.data[[j]]),
+        group = factor(.data[[j]])
+      ),
+      concavity = 3,
+        linewidth = .3,
+        color = "black",
+        fill = NA, expand = unit(1, "mm")
+    ) +
+      geom_text(
+        data = centers,
+        aes(
+          umap_1,
+          umap_2,
+          label = .data[[j]]
+        ),
+        color = "black",
+        size = 4,
+        fontface = "bold"
+      )
+ etmr_scale[[i]][[j]] <- p }
+  
+}
+
+
+names(etmr_scale) <- names(human_tumor_long)
+
+etmr_scale <- lapply(etmr_scale, function(x) {
+  names(x) <- c("mnn_res_0.8", "mnn_res_1", "mnn_res_1.2",
+           "mnn_res_1.5", "mnn_res_1.8", "mnn_res_2")
+  x
+})
+
+
+```
+
+```{r}
+
+rgc_gaba <- c("DLX1", "DLX2", "DLX5", "DLX6", "NKX2-1")
+rgc_glut <- c("PAX6", "EMX1")
+
+
+FeaturePlot(JoinLayers(by_group$A), features = c(rgc_gaba, rgc_glut), order = TRUE)
+FeaturePlot(by_group$D, features = c(rgc_gaba, rgc_glut), order = TRUE)
+
+VlnPlot(JoinLayers(by_group$A), features = c(rgc_gaba, rgc_glut))
+VlnPlot(JoinLayers(by_group$D), features = c(rgc_gaba, rgc_glut))
+
+Idents(by_group$C) <- "mnn_res_1.8"
+VlnPlot(JoinLayers(by_group$C), features = c(rgc_gaba))
+VlnPlot(JoinLayers(by_group$C), features = c(rgc_glut))
+VlnPlot(JoinLayers(by_group$B), features = c(rgc_gaba, rgc_glut))
+
+
+c_1.8 <- c(
+   "1" = "Neurons",
+  "2" = "Neurons_immature_GABA",
+  "3" = "Neurons_immature_GABA",
+  "4" = "Neurons_immature",
+  "5" = "Neurons_immature_GABA",
+  "6" = "Neurons_immature_Glut",
+  "7" = "Neurons_immature_GABA",
+  "8" = "Neurons_immature_GABA",
+  "9" = "Neurons_immature_Glut",
+  "10" = "Neurons_immature",
+  "11" = "Neurons_immature_Glut",
+  "12" = "Neurons_immature",
+  "13" = "Neurons_immature",
+  "14" = "Neurons_immature_GABA",
+  "15" = "Neurons",
+  "16" = "Neurons_immature",
+  "17" = "Neurons_immature_GABA",
+  "18" = "Neurons_immature",
+  "19" = "Neurons_immature_GABA",
+  "20" = "RGC"
+)
+
+FeaturePlot(by_group$C, features = cellmarkers$GABA, order = TRUE)
+FeaturePlot(by_group$A, features = cellmarkers$GABA, order = TRUE)
+FeaturePlot(by_group$D, features = cellmarkers$GABA, order = TRUE)
+FeaturePlot(by_group$B, features = cellmarkers$GABA, order = TRUE)
+FeaturePlot(by_group$excluded, features = cellmarkers$GABA, order = TRUE)
+
+FeaturePlot(by_group$C, features = "GABA1", order = TRUE)
+GABRG2
+
+FeaturePlot(by_group$C, features = c("GABRG2", "CACNA1G", "GAD2"), order = TRUE)
+
+
+FeaturePlot(by_group$A, features = cellmarkers$Glut, order = TRUE)
+FeaturePlot(by_group$D, features = cellmarkers$Glut, order = TRUE)
+
+
+
+rgc_gaba_a <- FeaturePlot(by_group$A, features = rgc_gaba, order = TRUE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/features/rgc_gaba_a.png", rgc_gaba_a, width = 8, height = 6, units = "in")
+
+rgc_gaba_d <- FeaturePlot(by_group$D, features = rgc_gaba, order = TRUE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/features/rgc_gaba_d.png", rgc_gaba_d, width = 8, height = 6, units = "in")
+
+rgc_glut_a <- FeaturePlot(by_group$A, features = rgc_glut, order = TRUE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/features/rgc_glut_a.png", rgc_glut_a, width = 12, height = 6, units = "in")
+
+rgc_glut_d <- FeaturePlot(by_group$D, features = rgc_glut, order = TRUE)
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/features/rgc_glut_d.png", rgc_glut_d, width = 12, height = 6, units = "in")
+```
+
+#### Label transfer to whole dataset
+
+```{r}
+integrated_data <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing.qs2", nthreads = 6)
+by_group <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing_by_group.qs2", nthreads = 6)
+
+FeaturePlot(integrated_data, features = c("GABA1", "Glut1"), order = TRUE)
+
+colnames(integrated_data@meta.data)
+
+by_group_celltypes <- c(by_group$A$celltype_1.8, by_group$B$celltype_1.8, by_group$C$celltype_1.8, by_group$D$celltype_1.5, by_group$excluded$celltype_1.2)
+
+integrated_data <- AddMetaData(integrated_data, by_group_celltypes, col.name = "by_group_celltypes")
+
+by_group_etmr <- c(by_group$A$etmr_score, by_group$B$etmr_score, by_group$C$etmr_score, by_group$D$etmr_score, by_group$excluded$etmr_score)
+
+integrated_data <- AddMetaData(integrated_data, as.numeric(by_group_etmr), col.name = "etmr_score")
+
+FeaturePlot(integrated_data, features = "etmr_score", order = TRUE, pt.size = 1) &
+      scale_color_gradient2(
+        low = "blue",
+        mid = "lightyellow",
+        high = "red",
+        midpoint = 0
+      )
+
+FeaturePlot(integrated_data, features = "etmr_score", order = FALSE, pt.size = 1) &
+      scale_color_gradient2(
+        low = "blue",
+        mid = "lightyellow",
+        high = "red",
+        midpoint = 0
+      )
+
+
+
+celltype_colors <-  c("Neurons" = "#822faf",
+"Neurons_immature"   = "#F15A8A",
+"Neurons_immature_GABA" = "#fbc1b4", 
+"Neurons_immature_Glut" = "#ff90b3",
+"IPC"                = "#F6C453",
+
+"NEC-like_RGC"       = "#3FAF6B",
+"RGC_NEC-like" = "#3FAF6B",
+"RGC"                = "#7ACB5A",
+
+"Pericytes"          = "#5ED7C4",
+"Endothelial"        = "#2AA7A1",
+"PC/EC"          = "#5ED7C4",
+
+"Astrocytes"         = "#69C6E8",
+"Microglia"          = "#AFC7E9",
+
+"Oligodendrocytes"   = "#BFC3C7",
+"OPC"                = "#7C848C",
+
+"Lymphocytes"        = "#2C6EAA")
+
+DimPlot(integrated_data, group.by = c("celltype.1", "by_group_celltypes"), cols = celltype_colors) / FeaturePlot(integrated_data, features = c("GABA1", "Glut1"), order = TRUE)
+
+human_tumor_long <- integrated_data@meta.data  |>
+  rownames_to_column("cell") |>
+  dplyr::select(
+    cell,
+    orig.ident, 
+    RNA_snn_res.1,
+    RNA_snn_res.1.8,
+    condition,
+    "etmr_score"
+    )
+
+violin_human_tumor_etmr <- human_tumor_long |>
+             dplyr::filter(
+               mean(etmr_score, na.rm = TRUE) != 0 |
+               median(etmr_score, na.rm = TRUE) != 0
+             ) |>
+             dplyr::ungroup() |>
+             ggplot(aes(x = RNA_snn_res.1, y = etmr_score)) +
+             geom_violin() +
+             labs(title = "ETMR score by cluster res 1", x = "cluster")
+
+human_tumor_long |>
+             dplyr::filter(
+               mean(etmr_score, na.rm = TRUE) != 0 |
+               median(etmr_score, na.rm = TRUE) != 0
+             ) |>
+             dplyr::ungroup() |>
+             ggplot(aes(x = RNA_snn_res.1.8, y = etmr_score)) +
+             geom_violin() +
+             labs(title = "ETMR score by cluster res 1", x = "cluster")
+
+
+
+for (i in names(violin_human_tumor_etmr)) {
+  for(j in c(1.2, 1.5, 1.8, 2)) {
+   ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/violin/etmr", paste0(i, "_",j), ".png"), violin_human_tumor_etmr[[i]][[paste0("mnn_res_",j)]], width = 16, height = 8, units = "in") 
+  }
+}
+
+
+
+brain_location <- setNames(c("right fronto-temporal",
+"cerebello-pontine angle",
+"posterior fossa",
+"posterior fossa",
+"supratentorial",
+"supratentorial",
+"frontal",
+"supratentorial", 
+"supratentorial"), c("KK22-H-225",
+"KK22-H-226",
+"KK22-H-227",
+"KK23-H-507",
+"KK23-H-508",
+"KK23-H-509",
+"KK23-H-510",
+"KK23-H-511",
+"KK23-H-512"
+))
+
+
+Idents(integrated_data) <- "Sample_ID"
+
+integrated_data@meta.data["brain_location"]  <- brain_location[as.factor(Idents(integrated_data))]
+
+DimPlot(integrated_data, group.by = "brain_location") + DimPlot(integrated_data, group.by = "orig.ident") 
+
+source("~/Projects/etmr/defaria/scripts/functions.R")  
+
+human_umapdf <- integrated_data@meta.data |>
+  dplyr::select(orig.ident, RNA_snn_res.1, condition, celltype.1, by_group_celltypes, RNA_snn_res.1.8, brain_location) |>
+  rownames_to_column("cell")
+
+human_hist_celltype_loc <- plot_hist(human_umapdf, "by_group_celltypes", "brain_location") + 
+  labs(title = "Location", fill = "Location") + 
+  labs(title = "Percentage of brain location by cell type")
+
+plot_hist(human_umapdf, "brain_location", "by_group_celltypes") + 
+  labs(title = "Cell type", fill = "Cell type") + 
+  labs(title = "Percentage of cell type by brain location")
+
+ggsave("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/Histograms/human_hist_celltype_loc.png", human_hist_celltype_loc, width = 8, height = 6, units = "in")
+
+Idents(integrated_data) <- "RNA_snn_res.1"
+
+qs_save(integrated_data, "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing.qs2", nthreads = 6)
+
+genes <- rownames(integrated_data)
+writeLines(genes, "/home/sofia/Projects/etmr/defaria/snRNA/data/seurat_genes.txt")
+
+```
+
+## Integrate with healthy RGC
+
+### First use all cell types
+
+I downsampled the entire dataset with downsample.sh
+
+```{r}
+library(reticulate)
+library(anndata)
+library(Seurat)
+library(qs2)
+library(BPCells)
+library(Azimuth)
+library(tidyverse)
+library(clustree)
+
+
+
+healthy_mat <- open_matrix_anndata_hdf5("/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes.h5ad")
+
+write_matrix_dir(
+  mat = healthy_mat,
+  dir = "/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes_counts")
+
+
+healthy_mat <- open_matrix_dir("/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes_counts")
+
+path = "/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes.h5ad"
+
+metadata <- LoadH5ADobs("/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes.h5ad")
+
+healthy <- CreateSeuratObject(counts = healthy_mat, meta.data = metadata
+)
+healthy <- NormalizeData(healthy)
+healthy <- FindVariableFeatures(healthy, verbose = FALSE)
+
+
+
+gene_convert <- read.table("/home/sofia/Projects/etmr/defaria/healthy/data/raw/genes.tsv", sep = '\t', header = TRUE)
+
+gene_names <- setNames(gene_convert$Gene, gene_convert$Ensembl_ID)
+
+new_names <- gene_names[rownames(healthy)]
+
+rownames(healthy) <- new_names
+
+
+healthy <- ScaleData(healthy)
+
+healthy <- RunPCA(healthy)
+
+
+qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_all_filtered.qs2", nthreads = 6)
+
+
+healthy <- RunUMAP(healthy, reduction = "pca", dims = 1:30, return.model = TRUE, reduction.name = "unintegrated")
+
+######################################neighbors and clusters########################################
+
+healthy <- FindNeighbors(healthy, reduction = "pca", dims = 1:30,
+                                graph.name = c("unintegrated_nn", "unintegrated_snn"))
+
+for (r in c(.8, 1, 1.2, 1.5, 1.8, 2)) {
+  healthy <- FindClusters(healthy, resolution = r,  algorithm = 4, graph.name = "unintegrated_snn", random.seed=2026)
+} #i'm doing this to have several resolution values for clustree
+
+DimPlot(healthy, reduction = "unintegrated")
+
+######################################clustree#######################################################
+
+clus_tree_unint <- clustree(healthy, prefix = "unintegrated_snn_res.")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/all_clus_tree_unint.png", clus_tree_unint, units = "in", width = 14, height = 14)
+
+healthy$unint_sel_res <- healthy$unintegrated_snn_res.1.8 
+
+qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_all_filtered.qs2", nthreads = 6)
+
+
+sel_res_unint <- DimPlot(healthy, reduction = "unintegrated", group.by = "unint_sel_res", label = TRUE, label.size = 3,
+                         repel = FALSE, raster = FALSE) + NoLegend() + ggtitle("Unintegrated healthy data selected clustering resolution (1.8)")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_sel_res_unint.png", sel_res_unint, width = 8, height = 6, units = "in")
+
+sel_ct_unint <- DimPlot(healthy, reduction = "unintegrated", group.by = "CellClass", label = TRUE, label.size = 3,
+                         repel = FALSE, raster = FALSE) + NoLegend() + ggtitle("Unintegrated healthy data cell type resolution (1.8)")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_sel_ct_unint.png", sel_ct_unint, width = 8, height = 6, units = "in")
+
+tumor <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing.qs2", nthreads = 6)
+
+tumor <- DietSeurat(tumor, 
+                    dimreducs = NULL, 
+                    assays = "RNA")
+
+anchors <-  FindTransferAnchors(reference = healthy, query = tumor, dims = 1:30,
+                                reference.reduction = "pca")
+
+unint_ancors <- as.data.frame(anchors@anchors)
+
+write_csv(unint_ancors, )
+
+anchors@anchor.features
+
+tumor <- MapQuery(anchorset = anchors, reference = healthy, query = tumor,
+                      refdata = list(Cluster = "unint_sel_res", CellType = "CellClass"), reference.reduction = "pca", reduction.model = "unintegrated")
+
+summary(tumor$predicted.Cluster.score)
+summary(tumor$predicted.CellType.score)
+
+
+##############################plot the results####################################
+
+tumor@meta.data$predicted.Cluster <- as.factor(as.numeric(tumor@meta.data$predicted.Cluster))
+
+cluster_unint_type <- tumor@meta.data |>
+  ggplot(aes(x = predicted.Cluster, fill = Tumor_Type)) +
+  geom_bar() +
+  theme_classic() +
+  ggtitle("Cluster predicted from unintegrated healthy data") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_fill_manual(values = c("#fbd960", "#d5b3ff"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_cluster_unint_type.png", cluster_unint_type, units = "in", width = 8, height = 6)
+
+cluster_unint_score <- tumor@meta.data |>
+  group_by(predicted.Cluster) |>
+  filter(n() > 10) |>
+  ungroup() |>
+  ggplot(aes(x = predicted.Cluster.score)) +
+  geom_histogram(binwidth = .05, fill = "#83c5be", color = "#006d77") +
+  theme_classic() +
+  facet_wrap(vars(predicted.Cluster), scales = "free_y")  
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_cluster_unint_score.png", cluster_unint_score, units = "in", width = 14, height = 10)
+
+############################################################################
+
+
+
+celltype_unint_type <- tumor@meta.data |>
+  ggplot(aes(x = predicted.CellType, fill = Tumor_Type)) +
+  geom_bar() +
+  theme_classic() +
+  ggtitle("Cell type predicted from unintegrated healthy data") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_fill_manual(values = c("#fbd960", "#d5b3ff"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_celltype_unint_type.png", celltype_unint_type, units = "in", width = 8, height = 6)
+
+celltype_unint_score <- tumor@meta.data |>
+  group_by(predicted.CellType) |>
+  filter(n() > 10) |>
+  ungroup() |>
+  ggplot(aes(x = predicted.CellType.score)) +
+  geom_histogram(binwidth = .05, fill = "#ffc8c8", color = "#ff5858") +
+  theme_classic() +
+  facet_wrap(vars(predicted.CellType), scales = "free_y")  
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/celltype_unint_score.png", celltype_unint_score, units = "in", width = 14, height = 10)
+
+#################################combined umap################################
+
+healthy$id <- 'reference'
+tumor$id <- 'query'
+
+healthy_umap <- as.data.frame(Embeddings(healthy, "unintegrated")) |>
+  mutate(Cluster = healthy$unint_sel_res, CellType = healthy$CellClass)
+healthy_umap$Condition <- "Healthy"
+tumor_umap <- as.data.frame(Embeddings(tumor, "ref.umap")) |>
+  mutate(Cluster = tumor$predicted.Cluster, CellType = tumor$predicted.CellType)
+tumor_umap$Condition <- "Tumor"
+
+tumor_umap <- tumor_umap |>
+  dplyr::rename(unintegrated_1 = refUMAP_1, unintegrated_2 = refUMAP_2)
+
+
+combined_umap <- rbind(
+  healthy_umap,
+  tumor_umap
+)
+
+combined_plot_cond <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + scale_color_manual(values = c("#b8e0d2", "#f7af9d")) + ggtitle("Combined unintegrated healthy and tumor data")
+
+combined_plot_cond <- LabelClusters(
+  plot = combined_plot_cond,
+  id = "Cluster"
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_combined_plot_cond.png", combined_plot_cond, units = "in", width = 8, height = 6)
+
+combined_plot_ct <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = CellType)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Cell type"
+  ) + ggtitle("Combined unintegrated healthy and tumor data") + facet_wrap(vars(Condition))
+
+combined_plot_ct <- LabelClusters(
+  plot = combined_plot_ct,
+  id = "Cluster"
+)
+
+or_celltype <- DimPlot(tumor, group.by = "by_group_celltypes", reduction = "ref.umap")
+
+pred_celltype <- DimPlot(tumor, group.by = "predicted.CellType", reduction = "ref.umap")
+
+or_celltype + pred_celltype
+
+
+filt_combined_plot_cond <- combined_umap |>
+  filter(Cluster %in% clust_in_tumor) |> 
+  ggplot(aes(x = unintegrated_1, y = unintegrated_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + scale_color_manual(values = c("#b8e0d2", "#f7af9d")) + ggtitle("Common clusters in unintegrated healthy and tumor data")
+
+filt_combined_plot_cond <- LabelClusters(
+  plot = filt_combined_plot_cond,
+  id = "Cluster"
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/filt_combined_plot_cond.png", filt_combined_plot_cond, units = "in", width = 8, height = 6)
+
+```
+
+```{r}
+library(reticulate)
+library(anndata)
+library(Seurat)
+library(qs2)
+library(BPCells)
+library(Azimuth)
+library(dplyr)
+library(tibble)
+
+#I already filtered the healthy data for genes present in the tumor data
+
+################################DON'T DELETE THIS########################################################
+# healthy_mat <- open_matrix_anndata_hdf5("/home/sofia/Projects/etmr/defaria/healthy/data/raw/radial_glia_seurat_genes.h5ad")
+# 
+# write_matrix_dir(
+#   mat = healthy_mat,
+#   dir = "/home/sofia/Projects/etmr/defaria/healthy/data/raw/radial_glia_seurat_genes_counts"
+# )
+########################################################################################################
+
+
+healthy_mat <- open_matrix_dir("/home/sofia/Projects/etmr/defaria/healthy/data/raw/radial_glia_seurat_genes_counts")
+
+path = "/home/sofia/Projects/etmr/defaria/healthy/data/raw/radial_glia_seurat_genes.h5ad"
+
+metadata <- LoadH5ADobs("/home/sofia/Projects/etmr/defaria/healthy/data/raw/radial_glia_seurat_genes.h5ad")
+
+healthy <- CreateSeuratObject(counts = healthy_mat, meta.data = metadata
+                              )
+healthy <- NormalizeData(healthy)
+healthy <- FindVariableFeatures(healthy, verbose = FALSE)
+
+
+#if you want to restart session###########################################
+healthy <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy.qs2", nthreads = 6)
+
+# split assay based on dev stage because i want to have a balanced representation for the label transfer
+
+healthy[["RNA"]] <- split(healthy[["RNA"]], f = healthy$development_stage_ontology_term_id)
+
+
+healthy <- SketchData(object = healthy, ncells = 5000, method = "LeverageScore", sketched.assay = "sketch", features = VariableFeatures(healthy), seed = 2026)
+
+qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy.qs2", nthreads = 6)
+
+healthy@meta.data |>
+  select(donor_id, development_stage_ontology_term_id, Age) |>
+  summarise(.by=c(donor_id, development_stage_ontology_term_id, Age), Count = n()) |>
+  arrange(desc(Count))
+
+healthy_sketch <- DietSeurat(
+  healthy,
+  assays = "sketch",
+  dimreducs = NULL,
+  graphs = NULL
+)
+
+qs_save(healthy_sketch, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+################################combined umap##############################
+
+healthy_sketch$id <- 'reference'
+tumor_rgc$id <- 'query'
+healthy_umap <- as.data.frame(Embeddings(healthy_sketch, "unintegrated")) |>
+  mutate(Cluster = healthy_sketch$unint_sel_res)
+healthy_umap$Condition <- "Healthy"
+tumor_umap <- as.data.frame(Embeddings(tumor_rgc, "ref.umap")) |>
+  mutate(Cluster = tumor_rgc$predicted.Cluster)
+tumor_umap$Condition <- "Tumor"
+
+tumor_umap <- tumor_umap |>
+  dplyr::rename(unintegrated_1 = refUMAP_1, unintegrated_2 = refUMAP_2)
+
+
+combined_umap <- rbind(
+  healthy_umap,
+  tumor_umap
+)
+
+combined_plot_cond <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + scale_color_manual(values = c("#b8e0d2", "#f7af9d")) + ggtitle("Combined unintegrated healthy and tumor data")
+
+combined_plot_cond <- LabelClusters(
+  plot = combined_plot_cond,
+  id = "Cluster"
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/combined_plot_cond.png", combined_plot_cond, units = "in", width = 8, height = 6)
+
+filt_combined_plot_cond <- combined_umap |>
+  filter(Cluster %in% clust_in_tumor) |> 
+  ggplot(aes(x = unintegrated_1, y = unintegrated_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + scale_color_manual(values = c("#b8e0d2", "#f7af9d")) + ggtitle("Common clusters in unintegrated healthy and tumor data")
+
+filt_combined_plot_cond <- LabelClusters(
+  plot = filt_combined_plot_cond,
+  id = "Cluster"
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/filt_combined_plot_cond.png", filt_combined_plot_cond, units = "in", width = 8, height = 6)
+
+
+```
+
+| donor_id | development_stage | Age              | Count |
+|:---------|:------------------|:-----------------|------:|
+| BRC2191  | HsapDv_0000027    | 6.90000009536743 | 84189 |
+| BRC2061  | HsapDv_0000027    | 6.90000009536743 | 43396 |
+| XDD:395  | HsapDv_0000025    | 6                | 42562 |
+| BRC2147  | HsapDv_0000027    | 6.69999980926514 | 38838 |
+| BRC2106A | HsapDv_0000027    | 6.59999990463257 | 34733 |
+| BRC2114  | HsapDv_0000027    | 6.90000009536743 | 34690 |
+| XDD:400  | HsapDv_0000023    | 5.5              | 30196 |
+| XDD:348  | HsapDv_0000022    | 5                | 27701 |
+| XHU:297  | HsapDv_0000048    | 10               | 20737 |
+| BRC2110  | HsapDv_0000027    | 6.90000009536743 | 20188 |
+| BRC2006  | HsapDv_0000046    | 8                | 19358 |
+| XHU:307  | HsapDv_0000047    | 9.19999980926514 | 17191 |
+| XDD:313  | HsapDv_0000046    | 8.5              | 16230 |
+| BRC2073  | HsapDv_0000027    | 6.59999990463257 | 13848 |
+| XDD:334  | HsapDv_0000046    | 8                | 10500 |
+| XHU:305  | HsapDv_0000029    | 7.5              | 10295 |
+| XDD:342  | HsapDv_0000046    | 8.5              |  9447 |
+| XDD:358  | HsapDv_0000049    | 11.5             |  6942 |
+| BRC2057  | HsapDv_0000046    | 8.10000038146973 |  6440 |
+| XDD:398  | HsapDv_0000027    | 7                |  6082 |
+| XHU:292  | HsapDv_0000047    | 9.5              |  5587 |
+| XDD:351  | HsapDv_0000050    | 12               |  5551 |
+| BRC2021  | HsapDv_0000046    | 8                |  4948 |
+| XDD:326  | HsapDv_0000025    | 6                |  4568 |
+| XDD:385  | HsapDv_0000052    | 14               |  3055 |
+| XDD:359  | HsapDv_0000051    | 13               |  2636 |
+
+### Process sketch
+
+```{r}
+
+library(Seurat)
+library(qs2)
+library(ggplot2)
+
+
+healthy_sketch <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+healthy_sketch[["RNA"]] <- healthy_sketch[["sketch"]]
+DefaultAssay(healthy_sketch) <- "RNA"
+healthy_sketch[["sketch"]] <- NULL
+
+gene_convert <- read.table("/home/sofia/Projects/etmr/defaria/healthy/data/raw/genes.tsv", sep = '\t', header = TRUE)
+
+gene_names <- setNames(gene_convert$Gene, gene_convert$Ensembl_ID)
+
+new_names <- gene_names[rownames(healthy_sketch)]
+
+rownames(healthy_sketch) <- new_names
+
+healthy_sketch <- FindVariableFeatures(healthy_sketch)
+healthy_sketch <- ScaleData(healthy_sketch)
+
+healthy_sketch <- RunPCA(healthy_sketch)
+
+healthy_sketch <- JoinLayers(healthy_sketch)
 
 gc()
 
-jessa.ann <- readRDS("/home/sofia/Projects/etmr/defaria/mouse/data/so_etmr1_annotated.rds")
+qs_save(healthy_sketch, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
 
-jessa.ann <- as.SingleCellExperiment(jessa.ann)
+```
 
-pred.by.group <- lapply(bygroup_sce, function(x) {
-  x <- SingleR(test = x, ref = jessa.ann, assay.type.test=1,
-    labels = jessa.ann$cell_types_2_etmr1, de.method = "wilcox")
-  x})
+### Filter tumor data
 
-lapply(pred.by.group, function(x) table(x$pruned.labels))
+```         
 
-by_group <- setNames(
-  lapply(names(by_group), function(x) {
-    AddMetaData(
-      by_group[[x]],
-      pred.by.group[[x]]$pruned.labels,
-      col.name = "SingleR"
-    )
-  }),
-  names(by_group)
-)
- 
-
-
-by_group <- lapply(by_group, function(x) {
-  x$SingleR <- gsub("RDG", "RGC", x$SingleR)
-  x
-  })
-
-singler_plot_by_group <- setNames(lapply(names(by_group), function(x) {
-  x <- DimPlot(by_group[[x]], group.by = "SingleR", label = TRUE, repel = TRUE) + ggtitle(paste("SingleR", x))
-  x
-}), names(by_group))
-
-
-ggsave("/home/sofia/Projects/etmr/defaria/mouse/plots/Analysis/umaps/human_mouse/ko_singler_plot.png", singler_plot, width = 7, height = 6, units = "in")
-
-singler_ann <- integrated_data@meta.data |>
-  dplyr::select(orig.ident, celltype.1.8, SingleR, RNA_snn_res.1.8) |>
-  summarize(n(), .by = c(RNA_snn_res.1.8, celltype.1.8, SingleR))
-
-write.csv(singler_ann, "/home/sofia/Projects/etmr/defaria/mouse/tables/human_mouse/ko_singler_ann.csv")
+> summary(healthy_sketch@meta.data$nFeature_RNA)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    351    1815    2695    2926    3885    8860 
+> summary(tumor_rgc@meta.data$nFeature_RNA)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    251     748    1161    1512    1822    8997 
+> summary(tumor_rgc@meta.data$nCount_RNA)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    260     856    1398    2256    2403   48163 
+> summary(healthy_sketch@meta.data$nCount_RNA)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    428    2856    5025    6693    9186   55273 
 ```
 
 ```{r}
 
+tumor_data <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing.qs2", nthreads = 6) #check to make sure this data is what i think it is
+
+# tumor_data_raw <- readRDS("/home/sofia/Projects/etmr/defaria/snRNA/data/combined_fixed_tumors_raw.rds")
+
+summary(tumor_data_raw@meta.data$nFeature_RNA)
+
+   # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   #   29     671    1197    1640    2143   12342 
+
+summary(tumor_data@meta.data$nFeature_RNA)
+  # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  #   251     708    1195    1564    2051    8997 
+
+ # summary(tumor_rgc@meta.data$nFeature_RNA)
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#     251     748    1161    1512    1822    8997 
+
+# summary(healthy_sketch@meta.data$nFeature_RNA)
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#     351    1815    2695    2926    3885    8860 
+
+summary(tumor_data_raw@meta.data$nCount_RNA)
+
+   # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   #   77     763    1463    2742    2980  344142 
+
+summary(tumor_data@meta.data$nCount_RNA)
+
+   # Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   #  258     808    1459    2364    2816   48163 
+
+# summary(tumor_rgc@meta.data$nCount_RNA)
+
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#     260     856    1398    2256    2403   48163 
+
+# summary(healthy_sketch@meta.data$nCount_RNA)
+
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#     428    2856    5025    6693    9186   55273 
+
+tumor_data <- DietSeurat(tumor_data,
+  assays = "RNA",
+  dimreducs = NULL,
+  graphs = NULL)
+
+# tumor_rgc <- subset(tumor_data, subset = by_group_celltypes %in% c("RGC", "NEC-like_RGC")) 
+
+tumor_rgc_only <- subset(tumor_data, subset = by_group_celltypes %in% c("RGC"))
+
+qs_save(tumor_rgc, "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/tumor_rgc_plain.qs2", nthreads = 6)
+```
+
+![](images/clipboard-529473531.png)
+
+### Label transfer
+
+WAIT! revisit devstage just in case
+
+```{r}
+library(Seurat)
+library(qs2)
+library(tidyverse)
+library(clustree)
+
+
+healthy_sketch <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+healthy_sketch <- RunUMAP(healthy_sketch, reduction = "pca", dims = 1:30, return.model = TRUE, reduction.name = "unintegrated")
+
+######################################neighbors and clusters########################################
+
+healthy_sketch <- FindNeighbors(healthy_sketch, reduction = "pca", dims = 1:30,
+  graph.name = c("unintegrated_nn", "unintegrated_snn"))
+
+for (r in c(.8, 1, 1.2, 1.5, 1.8, 2)) {
+  healthy_sketch <- FindClusters(healthy_sketch, resolution = r,  algorithm = 4, graph.name = "unintegrated_snn", random.seed=2026)
+} #i'm doing this to have several resolution values for clustree
+
+######################################clustree#######################################################
+
+clus_tree_unint <- clustree(healthy_sketch, prefix = "unintegrated_snn_res.")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/clus_tree_unint.png", clus_tree_unint, units = "in", width = 14, height = 14)
+
+healthy_sketch$unint_sel_res <- healthy_sketch$unintegrated_snn_res.1.5 
+
+sel_res_unint <- DimPlot(healthy_sketch, reduction = "unintegrated", group.by = "unint_sel_res", label = TRUE, label.size = 3,
+    repel = FALSE) + NoLegend() + ggtitle("Unintegrated healthy data selected clustering resolution (1.5)")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/sel_res_unint.png", sel_res_unint, width = 8, height = 6, units = "in")
+
+qs_save(healthy_sketch, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+####################################now let's do the actual label transfer#############################
+
+healthy_sketch <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+tumor_rgc <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/tumor_rgc_plain.qs2")
+
+
+anchors <-  FindTransferAnchors(reference = healthy_sketch, query = tumor_rgc, dims = 1:30,
+    reference.reduction = "pca")
+
+unint_ancors <- as.data.frame(anchors@anchors)
+anchors@anchor.features
+
+tumor_rgc <- MapQuery(anchorset = anchors, reference = healthy_sketch, query = tumor_rgc,
+    refdata = list(DevStage = "development_stage_ontology_term_id"), reference.reduction = "pca", reduction.model = "unintegrated")
+
+summary(tumor_rgc$predicted.DevStage.score)
+
+
+my_colors <- c("#0A522A", "#8BA56F", "#BADE86", "#073F80", "#7CA0D4", "#2B8AAE", "#40007F", "#A48AD3", "#E995EB", "#80003F", "#DE757B")
+
+
+devstage_score_unint_hist <- tumor_rgc@meta.data |>
+  ggplot(aes(x = predicted.DevStage.score, fill = predicted.DevStage, color = predicted.DevStage))  +
+  geom_histogram(binwidth = .05, alpha = .6) +
+  facet_wrap(vars(predicted.DevStage), scales = "free_y", ncol = 3) +
+  theme_classic() +
+  scale_fill_manual(values = my_colors) +
+  scale_color_manual(values = my_colors) +
+  NoLegend()
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/devstage_score_unint_hist.png", devstage_score_unint_hist, width = 9, height = 9, units = "in")
+
+my_colors_healthy <- c("#0A522A", "#8BA56F", "#BADE86", "#073F80", "#7CA0D4", "#2B8AAE", "#40007F","#624894" ,"#A48AD3", "#E995EB", "#80003F", "#DE757B")
+
+
+p1 <- DimPlot(healthy_sketch, reduction = "unintegrated", group.by = "development_stage_ontology_term_id", label = FALSE, label.size = 3,
+    repel = FALSE, cols = my_colors_healthy) +  ggtitle("Reference developmental stages")
+
+p2 <- DimPlot(tumor_rgc, reduction = "ref.umap", group.by = "predicted.DevStage", label = FALSE,
+    label.size = 3, repel = TRUE, cols = my_colors) + ggtitle("Query transferred labels")
+
+dev_stages_plot_unint <- p1 + p2
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/dev_stages_plot_unint.png", dev_stages_plot_unint, width = 15, height = 7, units = "in")
+
+p3 <- DimPlot(healthy_sketch, reduction = "unintegrated", group.by = "donor_id", label = TRUE, label.size = 3,
+    repel = TRUE) + NoLegend()+ ggtitle("Reference ID")
+
+p4 <- DimPlot(tumor_rgc, reduction = "ref.umap", group.by = "orig.ident",
+    label.size = 3, repel = TRUE) + ggtitle("Query ID")
+
+healthy_sketch@meta.data$Age <- as.numeric(as.character(healthy_sketch@meta.data$Age))
+
+p5 <- FeaturePlot(healthy_sketch, reduction = "unintegrated", features = "Age") + ggtitle("Reference Age")
+
+age <- c(
+  "GSM8058157" = 31.2, 
+  "GSM8058158" = 12, 
+  "GSM8058159" = 30, 
+  "GSM8058160" = 29, 
+  "GSM8058161" = 12, 
+  "GSM8058162" = 35, 
+  "GSM8058163" = 48, 
+  "GSM8058164" = 34, 
+  "GSM8058165"= 39.6)
+
+Idents(tumor_rgc) <- "orig.ident"
+
+tumor_rgc@meta.data["Age"]  <- age[Idents(tumor_rgc)]
+
+p6 <- FeaturePlot(tumor_rgc, reduction = "ref.umap", features = "Age") + ggtitle("Query Age")
+
+sep_ids <- (p1 + p2) / (p3 + p4)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/sep_ids_unint.png", sep_ids, units = "in", width = 12, height = 10)
+
+p5 + p6 # age really isn't comparable right now, maybe we could make some sort of index??
+
+
+tumor_rgc@meta.data |>
+  group_by(predicted.DevStage) |>
+  summarise(Count = n()) |>
+  arrange(desc(Count))
+
+devstage_unint_type <- tumor_rgc@meta.data |>
+  ggplot(aes(x = predicted.DevStage, fill = Tumor_Type)) +
+  geom_bar() +
+  theme_classic() +
+  ggtitle("Developmental stage predicted from unintegrated healthy data") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_fill_manual(values = c("#fbd960", "#d5b3ff"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/devstage_unint_type.png", devstage_unint_type, units = "in", width = 8, height = 6)
+```
+
+```{r}
+#try to separate nec-like and see how that integrates
+```
+
+|                              |                         |         |                |
+|-----------------------|-------------------|---------------|---------------|
+| Carnegie stage 15            | \~Week 5 (35 - 38 days) | 5       | HsapDv:0000022 |
+| Carnegie stage 16            | \~Week 6 (37 - 42 days) | 5.5     | HsapDv:0000023 |
+| Carnegie stage 18            | \~Week 7 (44 - 48 days) | 6       | HsapDv:0000025 |
+| Carnegie stage 20            | \~Week 8 (51 - 53 days) | 6.6-7   | HsapDv:0000027 |
+| Carnegie stage 22            | \~Week 8 (54-56 days)   | 7.5     | HsapDv:0000029 |
+| 9th week post-fertilization  |                         | 8-8.5   | HsapDv:0000046 |
+| 10th week post-fertilization |                         | 9.2-9.5 | HsapDv:0000047 |
+| 11th week post-fertilization |                         | 10      | HsapDv:0000048 |
+| 12th week post-fertilization |                         | 11.5    | HsapDv:0000049 |
+| 13th week post-fertilization |                         | 12      | HsapDv:0000050 |
+| 14th week post-fertilization |                         | 13      | HsapDv:0000051 |
+| 15th week post-fertilization |                         | 14      | HsapDv:0000052 |
+
+| Stage          | Freq in tumor | Freq in reference |
+|----------------|---------------|-------------------|
+| HsapDv_0000022 | 14252         | 2000              |
+| HsapDv_0000023 | 7             | 2000              |
+| HsapDv_0000025 | 773           | 4000              |
+| HsapDv_0000027 | 6481          | 16000             |
+| HsapDv_0000046 | 1494          | 12000             |
+| HsapDv_0000047 | 96            | 4000              |
+| HsapDv_0000050 | 10            | 2000              |
+| HsapDv_0000051 | 58            | 2000              |
+| HsapDv_0000052 | 2             | 2000              |
+
+I changed that to 5000 for every stage except the last two because they didn't have enough cells
+
+#### Try to label transfer cluster
+
+```{r}
+library(Seurat)
+library(qs2)
+library(clustree)
+library(tidyverse)
+
+
+healthy_sketch <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+tumor_rgc <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/tumor_rgc_plain.qs2")
+
+####################################label transfer########################################################
+anchors <-  FindTransferAnchors(reference = healthy_sketch, query = tumor_rgc, dims = 1:30,
+    reference.reduction = "pca")
+
+unint_ancors <- as.data.frame(anchors@anchors)
+anchors@anchor.features
+
+tumor_rgc <- MapQuery(anchorset = anchors, reference = healthy_sketch, query = tumor_rgc,
+    refdata = list(Cluster = "unint_sel_res"), reference.reduction = "pca", reduction.model = "unintegrated")
+
+####################################label transfer scores##############################################
+
+tumor_count_df <- tumor_rgc@meta.data |>
+  dplyr::group_by(predicted.Cluster) |>
+  reframe(TumorCount = n(), MinScore = min(predicted.Cluster.score), MeanScore = mean(predicted.Cluster.score), MedianScore = median(predicted.Cluster.score), MaxScore = max(predicted.Cluster.score)) |>
+  arrange(desc(TumorCount)) |>
+  dplyr::ungroup() |>
+  dplyr::rename(Clusters = predicted.Cluster)
+
+healthy_count_df <- healthy_sketch@meta.data |>
+  group_by(unint_sel_res) |>
+  summarise(HealthyCount = n()) |>
+  arrange(desc(HealthyCount)) |>
+  ungroup() |>
+  rename(Clusters = unint_sel_res)
+
+unint_score_clusters <- tumor_count_df |> 
+  left_join(healthy_count_df, by = "Clusters") |>
+  mutate(RatioTumor = TumorCount/HealthyCount) |>
+  arrange(desc(RatioTumor)) |>
+  select(Clusters, TumorCount, HealthyCount, RatioTumor, MinScore, MeanScore, MedianScore, MaxScore)
+
+write_csv(unint_score_clusters, "/home/sofia/Projects/etmr/defaria/healthy/unint_score_clusters.csv")
+
+##############################plot the results####################################
+
+cluster_unint_type <- tumor_rgc@meta.data |>
+  ggplot(aes(x = predicted.Cluster, fill = Tumor_Type)) +
+  geom_bar() +
+  theme_classic() +
+  ggtitle("Cluster predicted from unintegrated healthy data") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_fill_manual(values = c("#fbd960", "#d5b3ff"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/cluster_unint_type.png", cluster_unint_type, units = "in", width = 8, height = 6)
+
+cluster_unint_score <- tumor_rgc@meta.data |>
+  ggplot(aes(x = predicted.Cluster.score)) +
+  geom_histogram(binwidth = .05, fill = "#83c5be", color = "#006d77") +
+  theme_classic() +
+  facet_wrap(vars(predicted.Cluster), scales = "free_y")  
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/cluster_unint_score.png", cluster_unint_score, units = "in", width = 14, height = 12)
+
+
+
+
+
+library(tidyverse)
+
+healthy_sketch$id <- 'reference'
+tumor_rgc$id <- 'query'
+healthy_umap <- as.data.frame(Embeddings(healthy_sketch, "unintegrated")) |>
+  mutate(Cluster = healthy_sketch$unint_sel_res)
+healthy_umap$Condition <- "Healthy"
+tumor_umap <- as.data.frame(Embeddings(tumor_rgc, "ref.umap")) |>
+  mutate(Cluster = tumor_rgc$predicted.Cluster)
+tumor_umap$Condition <- "Tumor"
+
+tumor_umap <- tumor_umap |>
+  dplyr::rename(unintegrated_1 = refUMAP_1, unintegrated_2 = refUMAP_2)
+  
+
+combined_umap <- rbind(
+  healthy_umap,
+  tumor_umap
+)
+
+combined_plot_cond <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + scale_color_manual(values = c("#b8e0d2", "#f7af9d")) + ggtitle("Combined unintegrated healthy and tumor data")
+
+combined_plot_cond <- LabelClusters(
+  plot = combined_plot_cond,
+  id = "Cluster"
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/combined_plot_cond.png", combined_plot_cond, units = "in", width = 8, height = 6)
+
+filt_combined_plot_cond <- combined_umap |>
+  filter(Cluster %in% clust_in_tumor) |> 
+  ggplot(aes(x = unintegrated_1, y = unintegrated_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + scale_color_manual(values = c("#b8e0d2", "#f7af9d")) + ggtitle("Common clusters in unintegrated healthy and tumor data")
+
+filt_combined_plot_cond <- LabelClusters(
+  plot = filt_combined_plot_cond,
+  id = "Cluster"
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/filt_combined_plot_cond.png", filt_combined_plot_cond, units = "in", width = 8, height = 6)
+
+source("~/Projects/etmr/defaria/cellmarkers.R") 
+
+for (x in names(cellmarkers)) {
+  healthy_sketch <- AddModuleScore(
+      healthy_sketch,
+      features = cellmarkers[x],
+      name = x
+    )
+  }
+
+healthy_sketch_plots_all <- FeaturePlot(healthy_sketch, features = paste0(names(cellmarkers),"1"), ncol = 3,                             reduction = "unintegrated", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, raster = FALSE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/healthy_sketch_plots_all.png", healthy_sketch_plots_all, units = "in", width = 16, height = 21)
+
+healthy_sketch_plots_sel <- FeaturePlot(healthy_sketch, features = paste0(c("GABA", "NEC", "Glut", "Cycling", "IPC"),"1"), ncol = 2, 
+                            reduction = "unintegrated", 
+                            keep.scale = "all", 
+                            order = TRUE,
+  pt.size = .2, raster = FALSE) & scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/healthy_sketch_plots_sel.png", healthy_sketch_plots_sel, units = "in", width = 14, height = 14)
+
+qs_save(healthy_sketch, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+qs_save(tumor_rgc, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/unintegrated/tumor_rgc.qs2", nthreads = 6)
+
+####################################################################################################
+
+
+source("~/Projects/etmr/defaria/cellmarkers.R")
+
+scores_healthy <- healthy_sketch@meta.data |>
+  select(paste0(names(cellmarkers),"1"), etmr_score)|>
+  rownames_to_column("cell")
+
+healthy_umap <- healthy_umap |>
+  rownames_to_column("cell") |>
+  left_join(scores_healthy)
+
+
+scores_tumors <- tumor_rgc@meta.data |>
+  select(paste0(names(cellmarkers),"1"), etmr_score)|>
+  rownames_to_column("cell")
+
+scores_both <- rbind(scores_healthy, scores_tumors)
+
+combined_umap <- combined_umap |>
+  rownames_to_column("cell") |>
+  left_join(scores_both)
+
+combined_umap <- combined_umap[order(combined_umap$GABA1), ]
+
+combined_plot_gaba <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = GABA1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "GABA"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+
+combined_umap <- combined_umap[order(combined_umap$Glut1), ]
+
+combined_plot_glut <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = Glut1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Glutamate"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+
+combined_umap <- combined_umap[order(combined_umap$RDG1), ]
+
+combined_plot_rdg <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = RDG1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "RGC"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+combined_umap <- combined_umap[order(combined_umap$NEC1), ]
+
+combined_plot_nec <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = NEC1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "NEC"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+
+
+combined_umap <- combined_umap[order(combined_umap$IPC1), ]
+
+combined_plot_ipc <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = IPC1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "IPC"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+combined_umap <- combined_umap[order(combined_umap$etmr_score), ]
+
+combined_plot_etmr <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = etmr_score)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "ETMR"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+
+combined_plot <- combined_plot_etmr + combined_plot_nec + combined_plot_rdg + combined_plot_ipc + combined_plot_gaba + combined_plot_glut
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/combined_plot.png", combined_plot, units = "in", width = 18, height = 7)
+
+
+#########################etmr score#############################################
+signt_etmr <- read.csv("/home/sofia/Projects/etmr/defaria/snRNA/tables/signature.csv")
+
+
+signt_etmr <- as.list(signt_etmr)
+signt_etmr$Positive <- signt_etmr$Positive[signt_etmr$Positive %in% Features(healthy_sketch)]
+signt_etmr$Negative <- signt_etmr$Negative[signt_etmr$Negative %in% Features(healthy_sketch)]
+
+######################filter healthy to only keep clusters that are similar to tumor#####################
+
+for (x in names(signt_etmr)) {
+  healthy_sketch <- AddModuleScore(
+    healthy_sketch,
+    features = signt_etmr[x],
+    name = x
+  )
+}
+
+healthy_sketch@meta.data <- healthy_sketch@meta.data |> 
+  mutate(etmr_score = Positive1 - Negative1) |>
+  select(-c(Positive1, Negative1))
+
+Idents(healthy_sketch) <- "unint_sel_res"
+
+clust_in_tumor <- unique(tumor_rgc$predicted.Cluster)
+
+healthy_filtered <- subset(healthy_sketch, subset = unint_sel_res %in% clust_in_tumor, droplevels.meta.data = TRUE)
+
+
+etmr_scale <- scale_color_gradient2(
+  low = "blue",
+  mid = "lightyellow",
+  high = "red",
+  midpoint = 0,
+  limits = c(-0.4, 0.5),
+  breaks = c(-0.4, -0.2, 0, 0.2, 0.4),
+  oob = scales::squish
+)
+
+all_healthy_unint_etmr <- FeaturePlot(
+  healthy_sketch, 
+  features = c("etmr_score"), order = TRUE, 
+  reduction = "unintegrated", label = TRUE) + 
+  ggtitle("Unintegrated healthy ETMR score") + 
+  theme_classic() +
+  etmr_scale
+
+filt_healthy_unint_etmr <- FeaturePlot(
+  healthy_filtered, 
+  features = c("etmr_score"), order = TRUE, 
+  reduction = "unintegrated", label = TRUE) + 
+  ggtitle("Selected healthy clusters") + 
+  theme_classic() +
+  etmr_scale 
+
+Idents(tumor_rgc) <- "predicted.Cluster"
+
+tumor_rgc_unint_etmr <- FeaturePlot(
+  tumor_rgc, features = c("etmr_score"), order = TRUE, 
+  reduction = "ref.umap", label = TRUE) + 
+  ggtitle("Tumor ETMR score") + 
+  theme_classic() +
+  etmr_scale
+
+
+etmr_score_unint <- combined_plot_cond + all_healthy_unint_etmr + tumor_rgc_unint_etmr
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/etmr_score_unint.png", etmr_score_unint, units = "in", width = 18, height = 6)
+
+#########################################location########################################################
+
+healthy_sketch@meta.data$location <- healthy_sketch@meta.data$Region
+
+tumor_rgc@meta.data$location <- tumor_rgc@meta.data$brain_location
+
+location <- rbind(healthy_sketch@meta.data["location"], tumor_rgc@meta.data["location"]) |> rownames_to_column("cell")
+
+
+combined_umap <- combined_umap |>
+  left_join(location)
+
+combined_location <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = location)) +
+  geom_point(size = .5, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "location"
+  ) + ggtitle("Combined location")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/combined_location.png", combined_location, units = "in", width = 8, height = 5)
+
+both_location <-(DimPlot(healthy_sketch, reduction = "unintegrated", group.by = "location", 
+    label.size = 3, repel = TRUE)  + ggtitle("Reference location")) + (DimPlot(tumor_rgc, reduction = "ref.umap", group.by = "location", 
+    label.size = 3, repel = TRUE) + ggtitle("Query location"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/both_location.png", both_location, units = "in", width = 14, height = 7)
+
+qs_save(healthy_sketch, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+qs_save(tumor_rgc, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/unintegrated/tumor_rgc.qs2", nthreads = 6)
+
+qs_save(combined_umap, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/unintegrated/combined_umap_df.qs2", nthreads = 6)
+
+
+```
+
+```{r}
+
+healthy_sketch <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+tumor_rgc <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/unintegrated/tumor_rgc.qs2", nthreads = 6)
+
+unint_healthy_markers <- FindAllMarkers(
+  healthy_sketch,
+  only.pos = FALSE,
+  min.pct = 0.1,
+  logfc.threshold = 0.25
+)
+
+write_csv(unint_healthy_markers, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/unint_healthy_markers.csv")
+
+clust_in_tumor <- unique(tumor_rgc$predicted.Cluster)
+
+healthy_sketch@meta.data <- healthy_sketch@meta.data |>
+  rownames_to_column("cell") |>
+  mutate(TumorSimilarity = ifelse(unint_sel_res %in% clust_in_tumor, "TumorLike", "NotTumorLike"),
+         donor_id = gsub(":", "", donor_id)) |>
+  group_by(unint_sel_res) |>
+  mutate(mean_etmr_score = mean(etmr_score)) |>
+  ungroup() |>
+  column_to_rownames("cell")
+
+
+tl_unint_vln <- VlnPlot(subset(healthy_sketch, subset = TumorSimilarity == "TumorLike"), "etmr_score") + NoLegend() + ggtitle("Tumor-like ETMR score")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/tl_unint_vln.png", tl_unint_vln, units = "in", width = 10, height = 7)
+
+ntl_unint_vln <- VlnPlot(subset(healthy_sketch, subset = TumorSimilarity != "TumorLike"), "etmr_score") + NoLegend() + ggtitle("Not-Tumor-like ETMR score")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/tl_unint_vln.png", tl_unint_vln, units = "in", width = 10, height = 7)
+
+qs_save(healthy_sketch, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/unintegrated/healthy_sketch.qs2", nthreads = 6)
+
+Idents(tumor_rgc) <- "predicted.Cluster"
+
+cluster_counts <- table(Idents(tumor_rgc))
+keep_clusters <- names(cluster_counts[cluster_counts > 10])
+
+tumor_unint_vln <- tumor_rgc %>%
+  subset(idents = keep_clusters) %>%
+  VlnPlot("etmr_score", pt.size = .1) +
+  NoLegend() +
+  ggtitle("Tumor ETMR score")
+
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/tumor_unint_vln.png", tumor_unint_vln, units = "in", width = 10, height = 7)
+
+
+```
+
+#### DEG pseudobulk
+
+What do I want to now?
+
+- What makes healthy cells similar to the tumor
+
+  - So I shouldn't care about things that aren't similar to the tumor??
+
+  - Or should I do separate analysis and compare them?
+
+  - Some cells are similar to the tumor but have low ETMR scores, while others are not similar to the tumor but they have high ETMR scores
+
+```{r}
+library(DESeq2)
+
+healthy_sketch <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/unintegrated/healthy_sketch.qs2", nthreads = 6)
+
+healthy_sketch <- AddMetaData(healthy_sketch, ifelse(healthy_sketch$etmr_score > 0, "High", "Low"), col.name = "ETMRExpression")
+
+table(healthy_sketch@meta.data$ETMRExpression, healthy_sketch@meta.data$donor_id)
+
+healthy_sketch_ag <- AggregateExpression(healthy_sketch, group.by = c("donor_id", "TumorSimilarity"))
+
+pb <- healthy_sketch_ag$RNA
+
+dim(pb)
+head(colnames(pb))
+colnames(pb)
+
+sample_info <- data.frame(
+  sample = colnames(pb)
+)
+
+sample_info$donor_id <- sub("_.*", "", sample_info$sample) #more complicated than it should be because there was a problem with the names before
+sample_info$Group <- sub("^[^_]+_", "", sample_info$sample)
+
+sample_info$Group <- factor(
+  sample_info$Group,
+  levels = c("NotTumorLike", "TumorLike")
+)
+
+rownames(sample_info) <- sample_info$sample
+
+sample_info
+
+table(sample_info$Group)
+table(sample_info$donor_id, sample_info$Group)
+
+
+dds <- DESeqDataSetFromMatrix(
+  countData = round(pb),
+  colData = sample_info,
+  design = ~ donor_id + Group
+)
+
+keep <- rowSums(counts(dds) >= 10) >= 2
+
+dds <- dds[keep, ]
+
+dds <- DESeq(dds)
+
+res <- results(
+  dds,
+  contrast = c("Group", "tumor-like", "not-tumor-like")
+)
+
+res <- res[order(res$padj), ]
+
+res_df <- as.data.frame(res)
+
+res_df$gene <- rownames(res_df)
+
+res_df <- res_df[, c(
+  "gene",
+  "baseMean",
+  "log2FoldChange",
+  "lfcSE",
+  "stat",
+  "pvalue",
+  "padj"
+)]
+
+sig <- subset(
+  res_df,
+  !is.na(padj) &
+    padj < 0.05 &
+    abs(log2FoldChange) >= 1
+)
+
+sig <- sig[order(sig$padj), ]
+
+tumor_like_genes <- subset(
+  sig,
+  log2FoldChange >= 1
+)
+
+not_tumor_like_genes <- subset(
+  sig,
+  log2FoldChange <= -1
+)
+
+table(healthy_sketch$donor_id, healthy_sketch$Group)
+table(healthy_sketch$donor_id, healthy_sketch$unint_sel_res)
+
+res_df$significant <- with(
+  res_df,
+  !is.na(padj) &
+    padj < 0.05 &
+    abs(log2FoldChange) >= 1
+)
+
+ggplot(
+  res_df,
+  aes(x = log2FoldChange, y = -log10(padj), color = significant)
+) +
+  geom_point(alpha = 0.6) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  theme_classic() +
+  labs(
+    x = "log2 fold change",
+    y = "-log10 adjusted p-value",
+    title = "Tumor-like vs not-tumor-like"
+  )
+
+```
+
+#### Integrate healthy first
+
+```{r}
+
+library(Seurat)
+library(qs2)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(tibble)
+
+
+healthy_sketch <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+healthy_sketch[["RNA"]] <- split(healthy_sketch[["RNA"]], f = healthy_sketch$donor_id)
+
+
+healthy_sketch <- IntegrateLayers(healthy_sketch,
+  method = SeuratWrappers::FastMNNIntegration)
+
+healthy_sketch <- RunUMAP(healthy_sketch, reduction = "integrated.mnn", dims = 1:30, return.model = TRUE, reduction.name = "integrated")
+
+DimPlot(healthy_sketch, group.by = "donor_id", reduction = "integrated")
+
+
+########################neighbors and clusters####################################
+
+age_plots <- FeaturePlot(healthy_sketch, features = "Age", order = TRUE, reduction = "integrated") + ggtitle("Unintegrated data age") |
+FeaturePlot(healthy_sketch, features = "Age", order = TRUE, reduction = "integrated") + ggtitle("MNN-integrated data age")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/age_plots.png", age_plots, units = "in", width = 14, height = 7)
+
+healthy_sketch <- FindNeighbors(healthy_sketch, reduction = "integrated.mnn", dims = 1:30,
+  graph.name = c("integrated_nn", "integrated_snn"))
+
+
+for (r in c(.8, 1, 1.2, 1.5, 1.8, 2)) {
+  healthy_sketch <- FindClusters(healthy_sketch, resolution = r, algorithm = 4, graph.name = "integrated_snn", random.seed=2026)
+}
+
+
+###################################clustree###################################
+
+library(clustree)
+
+clus_tree_int <- clustree(healthy_sketch, prefix = "integrated_snn_res.")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/clus_tree_int.png", clus_tree_int, units = "in", width = 14, height = 14)
+
+healthy_sketch <- AddMetaData(healthy_sketch, healthy_sketch$integrated_snn_res.1.8, col.name = "int_sel_res")
+
+##############################histograms#####################################
+
+source("~/Projects/etmr/defaria/scripts/functions.R")
+
+healthy_umapdf <- healthy_sketch@meta.data |>
+  mutate(DevStage = gsub("HsapDv_00000", "", 
+                         development_stage_ontology_term_id)) |>
+  mutate(DevGroup = factor(ifelse(
+    DevStage %in% c("22", "23", "25", "27", "29"), "embryonic", ifelse(
+      DevStage %in% c("46", "47", "48", "49"), "1st trimester", "2nd trimester")), 
+                           levels = c("embryonic", "1st trimester", "2nd trimester"))) |>
+  rownames_to_column("cell")
+
+
+
+###### plots
+
+
+# plot_hist(healthy_umapdf  |> mutate(integrated_snn_res.1 = factor(integrated_snn_res.1, levels =  as.character(cluster_order_1))), "integrated_snn_res.1", "DevStage", "DevStage")
+# plot_hist(healthy_umapdf  |> mutate(integrated_snn_res.1.2 = factor(integrated_snn_res.1.2, levels =  as.character(cluster_order_1.2))), "integrated_snn_res.1.2", "DevStage", "DevStage")
+# plot_hist(healthy_umapdf, "integrated_snn_res.1", "DevStage")
+# plot_hist(healthy_umapdf, "integrated_snn_res.1.2", "DevStage")
+# plot_hist(healthy_umapdf, "integrated_snn_res.1.5", "DevGroup")
+
+
+
+res_1.8 <- plot_hist(healthy_umapdf, "integrated_snn_res.1.8", "DevGroup") + ggtitle("MNN-inintegrated leiden res 1.8")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/res_1_8.png", res_1.8, units = "in", width = 10, height = 8)
+
+
+
+#I'll choose 1.8
+
+```
+
+```{r}
+count_feature <- FeaturePlot(healthy_sketch, reduction = "unintegrated", features = c("nFeature_RNA", "nCount_RNA"), order = TRUE)
+
+count_feature_int <- FeaturePlot(healthy_sketch, reduction = "integrated", features = c("nFeature_RNA", "nCount_RNA"), order = TRUE)
+
+count_feature_joined <- count_feature / count_feature_int
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/count_feature_joined.png", count_feature_joined, units = "in", width = 16, height = 14)
+```
+
+```{r, unintegrated_hists}
+
+res_1.5 <- plot_hist(healthy_umapdf, "unintegrated_snn_res.1.5", "DevGroup") + ggtitle("unintegrated leiden res 1.5")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/res_1_5.png", res_1.5, units = "in", width = 10, height = 8)
+
+res_1.8 <- plot_hist(healthy_umapdf, "unintegrated_snn_res.1.8", "DevGroup") + ggtitle("unintegrated leiden res 1.8")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/res_1_8.png", res_1.8, units = "in", width = 10, height = 8)
+```
+
+```{r}
+#########################################umaps #######################################################
+
+
+dif_res <- ((DimPlot(healthy_sketch, reduction = "integrated",
+         group.by = "integrated_snn_res.0.8", 
+         label = TRUE) + NoLegend()) + (DimPlot(healthy_sketch, reduction = "unintegrated",
+         group.by = "unintegrated_snn_res.0.8", 
+         label = TRUE) + NoLegend())) /
+((DimPlot(healthy_sketch, reduction = "integrated",
+         group.by = "integrated_snn_res.1", 
+         label = TRUE) + NoLegend()) + (DimPlot(healthy_sketch, reduction = "unintegrated",
+         group.by = "unintegrated_snn_res.1", 
+         label = TRUE) + NoLegend())) /
+((DimPlot(healthy_sketch, reduction = "integrated",
+         group.by = "integrated_snn_res.1.2", 
+         label = TRUE) + NoLegend()) + (DimPlot(healthy_sketch, reduction = "unintegrated",
+         group.by = "unintegrated_snn_res.1.2", 
+         label = TRUE) + NoLegend())) /
+((DimPlot(healthy_sketch, reduction = "integrated",
+         group.by = "integrated_snn_res.1.5", 
+         label = TRUE) + NoLegend()) + (DimPlot(healthy_sketch, reduction = "unintegrated",
+         group.by = "unintegrated_snn_res.1.5", 
+         label = TRUE) + NoLegend()))  /
+((DimPlot(healthy_sketch, reduction = "integrated",
+         group.by = "integrated_snn_res.1.8", 
+         label = TRUE) + NoLegend()) + (DimPlot(healthy_sketch, reduction = "unintegrated",
+         group.by = "unintegrated_snn_res.1.8", 
+         label = TRUE) + NoLegend())) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/dif_res.png", dif_res, units = "in", width = 14, height = 26)
+
+
+qs_save(healthy_sketch, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/integrated/healthy_sketch.qs2", nthreads = 6)
+
+###############################read tumor data#################################################
+
+library(Seurat)
+library(qs2)
+library(ggplot2)
+library(tidyverse)
+library(patchwork)
+
+healthy_sketch <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/integrated/healthy_sketch.qs2", nthreads = 6)
+
+healthy_sketch <- JoinLayers(healthy_sketch)
+
+
+tumor_rgc <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/tumor_rgc_plain.qs2", nthreads = 6)
+
+
+#label transfer
+anchors <-  FindTransferAnchors(reference = healthy_sketch, query = tumor_rgc, dims = 1:30,
+    reference.reduction = "integrated.mnn")
+
+int_ancors <- as.data.frame(anchors@anchors)
+
+write_csv(int_ancors, "/home/sofia/Projects/etmr/defaria/healthy/int_ancors.csv")
+
+tumor_rgc <- MapQuery(anchorset = anchors, reference = healthy_sketch, query = tumor_rgc,
+    refdata =  list(
+    Cluster = "int_sel_res"
+  ), 
+  reference.reduction = "integrated.mnn", 
+  reduction.model = "integrated")
+
+
+# Count anchors per developmental stage
+table(tumor_rgc$predicted.Cluster)
+summary(tumor_rgc$predicted.Cluster.score)
+
+
+```
+
+```{r}
+tumor_count_df <- tumor_rgc@meta.data |>
+  dplyr::group_by(predicted.Cluster) |>
+  reframe(TumorCount = n(), MinScore = min(predicted.Cluster.score), MeanScore = mean(predicted.Cluster.score), MedianScore = median(predicted.Cluster.score), MaxScore = max(predicted.Cluster.score)) |>
+  arrange(desc(TumorCount)) |>
+  dplyr::ungroup() |>
+  dplyr::rename(Clusters = predicted.Cluster)
+
+healthy_count_df <- healthy_sketch@meta.data |>
+  group_by(int_sel_res) |>
+  summarise(HealthyCount = n()) |>
+  arrange(desc(HealthyCount)) |>
+  ungroup() |>
+  rename(Clusters = int_sel_res)
+
+int_score_clusters <- tumor_count_df |> 
+  left_join(healthy_count_df, by = "Clusters") |>
+  mutate(RatioTumor = TumorCount/HealthyCount) |>
+  arrange(desc(RatioTumor)) |>
+  select(Clusters, TumorCount, HealthyCount, RatioTumor, MinScore, MeanScore, MedianScore, MaxScore)
+
+write_csv(int_score_clusters, "/home/sofia/Projects/etmr/defaria/healthy/int_score_clusters.csv")
+
+##############################plot the results####################################
+
+cluster_int_type <- tumor_rgc@meta.data |>
+  ggplot(aes(x = predicted.Cluster, fill = Tumor_Type)) +
+  geom_bar() +
+  theme_classic() +
+  ggtitle("Cluster predicted from integrated healthy data") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  scale_fill_manual(values = c("#fbd960", "#d5b3ff"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/cluster_int_type.png", cluster_int_type, units = "in", width = 8, height = 6)
+
+cluster_int_score <- tumor_rgc@meta.data |>
+  ggplot(aes(x = predicted.Cluster.score)) +
+  geom_histogram(binwidth = .05, fill = "#83c5be", color = "#006d77") +
+  theme_classic() +
+  facet_wrap(vars(predicted.Cluster), scales = "free_y")  
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/cluster_int_score.png", cluster_int_score, units = "in", width = 14, height = 12)
+
+
+
+
+
+library(tidyverse)
+
+healthy_sketch$id <- 'reference'
+tumor_rgc$id <- 'query'
+healthy_umap <- as.data.frame(Embeddings(healthy_sketch, "integrated")) |>
+  mutate(Cluster = healthy_sketch$int_sel_res)
+healthy_umap$Condition <- "Healthy"
+tumor_umap <- as.data.frame(Embeddings(tumor_rgc, "ref.umap")) |>
+  mutate(Cluster = tumor_rgc$predicted.Cluster)
+tumor_umap$Condition <- "Tumor"
+
+tumor_umap <- tumor_umap |>
+  dplyr::rename(integrated_1 = refUMAP_1, integrated_2 = refUMAP_2)
+
+
+combined_umap <- rbind(
+  healthy_umap,
+  tumor_umap
+)
+
+combined_plot_cond <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + scale_color_manual(values = c("#b8e0d2", "#f7af9d")) + ggtitle("Combined integrated healthy and tumor data")
+
+combined_plot_cond <- LabelClusters(
+  plot = combined_plot_cond,
+  id = "Cluster"
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/combined_plot_cond.png", combined_plot_cond, units = "in", width = 8, height = 6)
+
+tumor_rgc$predicted.Cluster <- as.factor(as.numeric(tumor_rgc$predicted.Cluster))
+
+clust_in_tumor <- unique(tumor_rgc$predicted.Cluster)
+
+
+
+
+filt_combined_plot_cond <- combined_umap |>
+  filter(Cluster %in% clust_in_tumor) |> 
+  ggplot(aes(x = integrated_1, y = integrated_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + scale_color_manual(values = c("#b8e0d2", "#f7af9d")) + ggtitle("Common clusters in integrated healthy and tumor data")
+
+filt_combined_plot_cond <- LabelClusters(
+  plot = filt_combined_plot_cond,
+  id = "Cluster"
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/filt_combined_plot_cond.png", filt_combined_plot_cond, units = "in", width = 8, height = 6)
+
+source("~/Projects/etmr/defaria/cellmarkers.R") 
+
+
+healthy_sketch_plots_all <- FeaturePlot(healthy_sketch, features = paste0(names(cellmarkers),"1"), ncol = 3,                             reduction = "integrated", 
+                                        keep.scale = "all", 
+                                        order = TRUE,
+                                        pt.size = .2, raster = FALSE) & scale_color_gradient2(
+                                          low = "blue",     # negative values
+                                          mid = "lightyellow",     # zero
+                                          high = "red",     # positive values
+                                          midpoint = 0
+                                        )
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/healthy_sketch_plots_all.png", healthy_sketch_plots_all, units = "in", width = 16, height = 21)
+
+healthy_sketch_plots_sel <- FeaturePlot(healthy_sketch, features = paste0(c("GABA", "NEC", "Glut", "Cycling", "IPC"),"1"), ncol = 2, 
+                                        reduction = "integrated", 
+                                        keep.scale = "all", 
+                                        order = TRUE,
+                                        pt.size = .2, raster = FALSE) & scale_color_gradient2(
+                                          low = "blue",     # negative values
+                                          mid = "lightyellow",     # zero
+                                          high = "red",     # positive values
+                                          midpoint = 0
+                                        )
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/healthy_sketch_plots_sel.png", healthy_sketch_plots_sel, units = "in", width = 14, height = 14)
+
+qs_save(healthy_sketch, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/integrated/healthy_sketch.qs2", nthreads = 6)
+
+qs_save(tumor_rgc, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/integrated/tumor_rgc.qs2", nthreads = 6)
+
+####################################################################################################
+
+
+source("~/Projects/etmr/defaria/cellmarkers.R")
+
+scores_healthy <- healthy_sketch@meta.data |>
+  select(paste0(names(cellmarkers),"1"), etmr_score)|>
+  rownames_to_column("cell")
+
+healthy_umap <- healthy_umap |>
+  rownames_to_column("cell") |>
+  left_join(scores_healthy)
+
+
+scores_tumors <- tumor_rgc@meta.data |>
+  select(paste0(names(cellmarkers),"1"), etmr_score)|>
+  rownames_to_column("cell")
+
+scores_both <- rbind(scores_healthy, scores_tumors)
+
+combined_umap <- combined_umap |>
+  rownames_to_column("cell") |>
+  left_join(scores_both)
+
+combined_umap <- combined_umap[order(combined_umap$GABA1), ]
+
+combined_plot_gaba <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = GABA1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "GABA"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+
+combined_umap <- combined_umap[order(combined_umap$Glut1), ]
+
+combined_plot_glut <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = Glut1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Glutamate"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+
+combined_umap <- combined_umap[order(combined_umap$RDG1), ]
+
+combined_plot_rdg <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = RDG1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "RGC"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+combined_umap <- combined_umap[order(combined_umap$NEC1), ]
+
+combined_plot_nec <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = NEC1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "NEC"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+
+
+combined_umap <- combined_umap[order(combined_umap$IPC1), ]
+
+combined_plot_ipc <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = IPC1)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "IPC"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+combined_umap <- combined_umap[order(combined_umap$etmr_score), ]
+
+combined_plot_etmr <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = etmr_score)) +
+  geom_point(size = 0.3, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "ETMR"
+  ) +
+  scale_color_viridis_c(direction = 1, option = "H") +
+  facet_wrap(vars(Condition))
+
+
+combined_plot <- combined_plot_etmr + combined_plot_nec + combined_plot_rdg + combined_plot_ipc + combined_plot_gaba + combined_plot_glut
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/combined_plot.png", combined_plot, units = "in", width = 18, height = 6)
+
+
+#########################etmr score#############################################
+signt_etmr <- read.csv("/home/sofia/Projects/etmr/defaria/snRNA/tables/signature.csv")
+
+
+signt_etmr <- as.list(signt_etmr)
+signt_etmr$Positive <- signt_etmr$Positive[signt_etmr$Positive %in% Features(healthy_sketch)]
+signt_etmr$Negative <- signt_etmr$Negative[signt_etmr$Negative %in% Features(healthy_sketch)]
+
+######################filter healthy to only keep clusters that are similar to tumor#####################
+
+for (x in names(signt_etmr)) {
+  healthy_sketch <- AddModuleScore(
+    healthy_sketch,
+    features = signt_etmr[x],
+    name = x
+  )
+}
+
+healthy_sketch@meta.data <- healthy_sketch@meta.data |> 
+  mutate(etmr_score = Positive1 - Negative1) |>
+  select(-c(Positive1, Negative1))
+
+Idents(healthy_sketch) <- "int_sel_res"
+
+clust_in_tumor <- unique(tumor_rgc$predicted.Cluster)
+
+healthy_filtered <- subset(healthy_sketch, subset = int_sel_res %in% clust_in_tumor, droplevels.meta.data = TRUE)
+
+
+etmr_scale <- scale_color_gradient2(
+  low = "blue",
+  mid = "lightyellow",
+  high = "red",
+  midpoint = 0,
+  limits = c(-0.4, 0.5),
+  breaks = c(-0.4, -0.2, 0, 0.2, 0.4),
+  oob = scales::squish
+)
+
+all_healthy_int_etmr <- FeaturePlot(
+  healthy_sketch, 
+  features = c("etmr_score"), order = TRUE, 
+  reduction = "integrated", label = TRUE) + 
+  ggtitle("integrated healthy ETMR score") + 
+  theme_classic() +
+  etmr_scale
+
+filt_healthy_int_etmr <- FeaturePlot(
+  healthy_filtered, 
+  features = c("etmr_score"), order = TRUE, 
+  reduction = "integrated", label = TRUE) + 
+  ggtitle("Selected healthy clusters") + 
+  theme_classic() +
+  etmr_scale 
+
+Idents(tumor_rgc) <- "predicted.Cluster"
+
+tumor_rgc_int_etmr <- FeaturePlot(
+  tumor_rgc, features = c("etmr_score"), order = TRUE, 
+  reduction = "ref.umap", label = TRUE) + 
+  ggtitle("Tumor ETMR score") + 
+  theme_classic() +
+  etmr_scale
+
+
+etmr_score_int <- combined_plot_cond + all_healthy_int_etmr + tumor_rgc_int_etmr
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/etmr_score_int.png", etmr_score_int, units = "in", width = 18, height = 6)
+
+#########################################location########################################################
+
+healthy_sketch@meta.data$location <- healthy_sketch@meta.data$Region
+
+tumor_rgc@meta.data$location <- tumor_rgc@meta.data$brain_location
+
+location <- rbind(healthy_sketch@meta.data["location"], tumor_rgc@meta.data["location"]) |> rownames_to_column("cell")
+
+
+combined_umap <- combined_umap |>
+  left_join(location)
+
+combined_location <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = location)) +
+  geom_point(size = .5, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "location"
+  ) + ggtitle("Combined location")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/combined_location.png", combined_location, units = "in", width = 8, height = 5)
+
+both_location <-(DimPlot(healthy_sketch, reduction = "integrated", group.by = "location", 
+                         label.size = 3, repel = TRUE)  + ggtitle("Reference location")) + (DimPlot(tumor_rgc, reduction = "ref.umap", group.by = "location", 
+                                                                                                    label.size = 3, repel = TRUE) + ggtitle("Query location"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/both_location.png", both_location, units = "in", width = 14, height = 7)
+
+qs_save(healthy_sketch, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_sketch.qs2", nthreads = 6)
+
+qs_save(tumor_rgc, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/integrated/tumor_rgc.qs2", nthreads = 6)
+
+qs_save(combined_umap, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/integrated/combined_umap_df.qs2", nthreads = 6)
+
+
+```
+
+```         
+  development_stage_ontology_term_id `n()`
+   <fct>                              <int>
+ 1 HsapDv_0000022                      5000
+ 2 HsapDv_0000023                      5000
+ 3 HsapDv_0000025                      5000
+ 4 HsapDv_0000027                      5000
+ 5 HsapDv_0000029                      5000
+ 6 HsapDv_0000046                      5000
+ 7 HsapDv_0000047                      5000
+ 8 HsapDv_0000048                      5000
+ 9 HsapDv_0000049                      5000
+10 HsapDv_0000050                      5000
+11 HsapDv_0000051                      2636
+12 HsapDv_0000052                      3055
+```
+
+![](images/clipboard-224411160.png)
+
+![](images/clipboard-470787188.png)
+
+```{r}
+tumor_rgc@meta.data |> 
+  group_by(predicted.DevStage) |>
+  ggplot(aes(x = predicted.DevStage)) +
+  geom_bar()
+
+healthy_sketch@meta.data |> 
+  group_by(development_stage_ontology_term_id) |>
+  reframe(n())
+
+hist(tumor_rgc@meta.data$predicted.DevStage.score)
+hist(subset(tumor_rgc, subset = predicted.DevStage == "HsapDv_0000027")@meta.data$predicted.DevStage.score)
+
+# > max(as.data.frame(anchors@anchors)$cell2)
+# [1] 23110
+# > max(as.data.frame(anchors@anchors)$cell1)
+# [1] 55632
+
+# > length(anchors@reference.cells)
+# [1] 55691
+
+anchor.df <- as.data.frame(anchors@anchors) |>
+  rename(reference = cell1, query = cell2)
+
+anchor.df |>
+  filter(score > .5)
+
+a <- anchors@anchors
+
+anchor_counts <- table(
+  healthy_sketch$development_stage_ontology_term_id[a[, "cell1"]]
+)
+
+ref_counts <- table(
+  healthy_sketch$development_stage_ontology_term_id
+)
+
+anchor_rate <- anchor_counts / ref_counts[names(anchor_counts)]
+
+sort(anchor_rate, decreasing = TRUE)
+
+
+
+tumor_anchor_stage <- healthy_sketch$development_stage_ontology_term_id[
+  a[, "cell1"]
+]
+
+# Number of anchor pairs per stage
+table(tumor_anchor_stage)
+
+# Fraction of all anchors
+prop.table(table(tumor_anchor_stage))
+
+tumor_stage_by_cell <- split(
+  tumor_anchor_stage,
+  a[, "cell2"]
+)
+
+
+qs_save(tumor_rgc, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/integrated/tumor_rgc.qs2", nthreads = 6)
+
+tumor_rgc <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/integrated/tumor_rgc.qs2", nthreads = 6)
+
+
+table(tumor_rgc$predicted.DevStage)
+
+healthy_sketch$id <- 'reference'
+tumor_rgc$id <- 'query'
+healthy_umap <- as.data.frame(Embeddings(healthy_sketch, "integrated"))
+healthy_umap$Condition <- "Healthy"
+
+
+
+
+healthy_umap <- 
+  cbind(healthy_umap, healthy_sketch@meta.data[c("RDG1", "NEC1", "IPC1", "Neuroblasts1", "Glut1", "GABA1",
+"Neurons1", "Astrocytes1",
+"OPC1", "Oligodendrocytes1",
+"Microglia1", "Endothelial1",
+"Pericytes1", "Fibroblasts1", "Tcell1",
+"Positive1", "Negative1")]) |>
+  mutate(etmr_score = Positive1 - Negative1) |>
+  select(-c(Positive1, Negative1))
+
+tumor_umap <- as.data.frame(Embeddings(tumor_rgc, "ref.umap"))
+tumor_umap$Condition <- "Tumor"
+
+tumor_umap <- tumor_umap |>
+  dplyr::rename(integrated_1 = refUMAP_1, integrated_2 = refUMAP_2)
+
+tumor_umap <- 
+  cbind(tumor_umap, tumor_rgc@meta.data[c("RDG1", "NEC1", "IPC1", "Neuroblasts1", "Glut1", "GABA1",                                   
+"Neurons1", "Astrocytes1",
+"OPC1", "Oligodendrocytes1",
+"Microglia1", "Endothelial1",
+"Pericytes1", "Fibroblasts1", "Tcell1", 
+ "etmr_score")])
+
+
+combined_umap <- rbind(
+  healthy_umap,
+  tumor_umap
+)
+
+
+
+combined_plot_cond <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + scale_color_manual(values = c("#b8e0d2", "#f7af9d")) + ggtitle("Combined integrated healthy and tumor data")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/combined_plot_cond.png", combined_plot_cond, units = "in", width = 8, height = 6)
+
+combined_umap <- combined_umap[order(combined_umap$etmr_score), ]
+
+combined_umap_etmr <- ggplot(combined_umap, aes(x = integrated_1, y = integrated_2, color = etmr_score)) +
+  geom_point(size = .5, alpha = 0.6) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "ETMR score"
+  )  + scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0, limits = c(-0.5, 0.5)
+) + 
+  facet_wrap(vars(Condition), scales = "free_y") + 
+  ggtitle("ETMR score for tumor data projected onto integrated healthy data")
+
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/combined_umap_etmr.png", combined_umap_etmr, units = "in", width = 8, height = 6)
+
+
+tumor_umap <- tumor_umap[order(tumor_umap$etmr_score), ]
+
+tumor_umap_etmr <- ggplot(tumor_umap, aes(x = umap_1, y = umap_2, color = etmr_score)) +
+  geom_point(size = .5, alpha = 0.6) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "ETMR score"
+  )  + scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0, limits = c(-0.5, 0.5)
+) + ggtitle("Tumor data") + lims(x = c(-10, 10), y = c(-10, 10))
+
+
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/tumor_umap_etmr.png", tumor_umap_etmr, units = "in", width = 8, height = 6)
+
+healthy_umap <- healthy_umap[order(healthy_umap$etmr_score), ]
+
+healthy_umap_etmr <- ggplot(healthy_umap, aes(x = umap_1, y = umap_2, color = etmr_score)) +
+  geom_point(size = .5, alpha = 0.6) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "ETMR score"
+  )  + scale_color_gradient2(
+  low = "blue",     # negative values
+  mid = "lightyellow",     # zero
+  high = "red",     # positive values
+  midpoint = 0, limits = c(-0.5, 0.5)
+) + ggtitle("Healthy data")
+
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/healthy_umap_etmr.png", healthy_umap_etmr, units = "in", width = 8, height = 6)
+
+
+all_plots <- combined_umap_etmr / ((healthy_umap_etmr + tumor_umap_etmr) & NoLegend())
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/all_plots.png", all_plots, units = "in", width = 12, height = 12)
+
+max(healthy_umap$etmr_score)
+max(tumor_umap$etmr_score)
+
+min(healthy_umap$etmr_score)
+min(tumor_umap$etmr_score)
+
+DimPlot(healthy_sketch, group.by = "donor_id", split.by = "location", label = TRUE)
+
+combined_umap <- combined_umap |> 
+  rownames_to_column("cell") |>
+  left_join(rbind(tumor_rgc@meta.data |> rownames_to_column("cell") |> select(cell, orig.ident, predicted.DevStage) |> rename(ID = orig.ident, DevStage = predicted.DevStage), healthy_sketch@meta.data |> rownames_to_column("cell") |> select(cell, donor_id, development_stage_ontology_term_id) |> rename(ID = donor_id, DevStage = development_stage_ontology_term_id)))
+
+combined_umap |> 
+  ggplot(aes(x = umap_1, y = umap_2, color = ID)) +
+  geom_point(size = .5, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "ID") +  ggtitle("Combined integrated healthy and tumor data")
+
+combined_umap |> 
+  ggplot(aes(x = umap_1, y = umap_2, color = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition")+
+  facet_wrap(~ DevStage) + scale_color_manual(values = c("#b8e0d2", "#f7af9d"))
+
+qs_save(tumor_rgc, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/label_tranfer/integrated/tumor_rgc.qs2", nthreads = 6)
+```
+
+```{r}
+p1 <- DimPlot(healthy_sketch, reduction = "umap", group.by = "development_stage_ontology_term_id", label = TRUE, label.size = 3,
+    repel = TRUE) + NoLegend() + ggtitle("Reference annotations")
+
+p2 <- DimPlot(tumor_rgc, reduction = "ref.umap", group.by = "predicted.id", label = TRUE,
+    label.size = 3, repel = TRUE) + NoLegend() + ggtitle("Query transferred labels")
+
+p3 <- DimPlot(healthy_sketch, reduction = "umap", group.by = "donor_id", label = TRUE, label.size = 3,
+    repel = TRUE) + NoLegend() + ggtitle("Reference ID")
+
+p4 <- DimPlot(tumor_rgc, reduction = "ref.umap", group.by = "orig.ident", label = TRUE,
+    label.size = 3, repel = TRUE) + NoLegend() + ggtitle("Query ID")
+
+healthy_sketch@meta.data$Age <- as.numeric(as.character(healthy_sketch@meta.data$Age))
+
+p5 <- FeaturePlot(healthy_sketch, reduction = "umap", features = "Age") + ggtitle("Reference Age")
+
+age <- c(
+  "GSM8058157" = 31.2, 
+  "GSM8058158" = 12, 
+  "GSM8058159" = 30, 
+  "GSM8058160" = 29, 
+  "GSM8058161" = 12, 
+  "GSM8058162" = 35, 
+  "GSM8058163" = 48, 
+  "GSM8058164" = 34, 
+  "GSM8058165"= 39.6)
+
+Idents(tumor_rgc) <- "orig.ident"
+
+tumor_rgc@meta.data["Age"]  <- age[Idents(tumor_rgc)]
+
+p6 <- FeaturePlot(tumor_rgc, reduction = "ref.umap", features = "Age") + ggtitle("Query Age")
+
+sep_ids <- (p1 + p2) / (p3 + p4)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/sep_ids.png", sep_ids, units = "in", width = 12, height = 10)
+
+age_comb <- p5 + p6 
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/age_comb.png", age_comb, units = "in", width = 6, height = 12)
+
+healthy_sketch@meta.data$location <- healthy_sketch@meta.data$Region
+
+tumor_rgc@meta.data$location <- tumor_rgc@meta.data$brain_location
+
+location <- rbind(healthy_sketch@meta.data["location"], tumor_rgc@meta.data["location"]) |> rownames_to_column("cell")
+
+
+combined_umap <- combined_umap |>
+  left_join(location)
+
+combined_location <- ggplot(combined_umap, aes(x = umap_1, y = umap_2, color = location)) +
+  geom_point(size = .5, alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "location"
+  ) + ggtitle("Combined location")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/combined_location.png", combined_location, units = "in", width = 8, height = 5)
+
+both_location <-(DimPlot(healthy_sketch, reduction = "umap", group.by = "location", 
+    label.size = 3, repel = TRUE)  + ggtitle("Reference location")) + (DimPlot(tumor_rgc, reduction = "ref.umap", group.by = "location", 
+    label.size = 3, repel = TRUE) + ggtitle("Query location"))
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/both_location.png", both_location, units = "in", width = 14, height = 7)
+
+```
+
+```{r histograms}
+source("~/Projects/etmr/defaria/scripts/functions.R")  
+
+healthy_umapdf <- healthy_sketch@meta.data |>
+  dplyr::select(donor_id, development_stage_ontology_term_id, Region, Subregion, Age, sample_id) |>
+  mutate(DevStage = gsub("HsapDv_", "", development_stage_ontology_term_id)) |>
+  rownames_to_column("cell")
+
+healthy_hist_donor_loc <- plot_hist(healthy_umapdf, "donor_id", "Region") + 
+  labs(title = "Location", fill = "Location") + 
+  labs(title = "Percentage of brain location by donor") 
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/histograms/healthy_hist_donor_loc.png", healthy_hist_donor_loc, units = "in", width = 10, height = 8)
+
+healthy_hist_loc_donor <- plot_hist(healthy_umapdf, "Region", "donor_id", "donor_id") + 
+  labs(title = "ID", fill = "ID") + 
+  labs(title = "Percentage of donor cells per location")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/histograms/healthy_hist_loc_donor.png", healthy_hist_loc_donor, units = "in", width = 12, height = 12)
+
+healthy_hist_subloc_donor <- plot_hist(healthy_umapdf, "Subregion", "donor_id", "donor_id") + 
+  labs(title = "ID", fill = "ID") + 
+  labs(title = "Percentage of donor cells per location")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/histograms/healthy_hist_subloc_donor.png", healthy_hist_subloc_donor, units = "in", width = 16
+       , height = 10)
+
+healthy_hist_loc_dev <- plot_hist(healthy_umapdf, "Region", "DevStage", "DevStage") + 
+  labs(title = "ID", fill = "ID") + 
+  labs(title = "Percentage of developmental stage cells per location")
+
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/histograms/healthy_hist_loc_dev.png", healthy_hist_loc_dev, units = "in", width = 9
+       , height = 8)
+
+healthy_hist_subloc_dev <- plot_hist(healthy_umapdf, "Subregion", "development_stage_ontology_term_id") + 
+  labs(title = "Developmental stage", fill = "Developmental stage") + 
+  labs(title = "Percentage of developmental stage cells per subregion")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/histograms/healthy_hist_subloc_dev.png", healthy_hist_subloc_dev, units = "in", width = 9
+       , height = 8)
+
+healthy_hist_dev_subloc <-plot_hist(healthy_umapdf, "development_stage_ontology_term_id", "Subregion", "Subregion") + 
+  labs(title = "Developmental stage", fill = "Developmental stage") + 
+  labs(title = "Percentage of subregion cells per developmental stage")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/histograms/healthy_hist_dev_subloc.png", healthy_hist_dev_subloc, units = "in", width = 14
+       , height = 12)
+
+tumor_umap <- tumor_umap |>
+  # rownames_to_column("cell") |>
+  left_join(tumor_rgc@meta.data |> rownames_to_column("cell") |> select(cell, orig.ident, location))
+
+tumor_hist_loc_donor <- plot_hist(tumor_umap, "location", "orig.ident", "orig.ident") + 
+  labs(title = "ID", fill = "ID") + 
+  labs(title = "Percentage of donor cells per location")
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/histograms/tumor_hist_loc_donor.png", tumor_hist_loc_donor, units = "in", width = 9
+       , height = 8)
+
+combined_hist_loc_donor <- (healthy_hist_loc_dev + tumor_hist_loc_donor) +
+  plot_layout(widths = c(2, 1))
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/integrated/histograms/combined_hist_loc_donor.png", combined_hist_loc_donor, units = "in", width = 18
+       , height = 8)
 ```

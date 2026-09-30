@@ -5,57 +5,70 @@ from scipy import sparse
 import anndata as ad
 import sys
 import hdf5plugin
-
+import seaborn as sns
+from pathlib import Path
+import matplotlib.pyplot as plt
+import parameters
+from scipy.sparse import csr_matrix
+import warnings
+warnings.filterwarnings("ignore")
 
 print("Reading" + str(sys.argv[1]) + "...")
 
 input_path = str(sys.argv[1])
-
-# Load data depending on file type
-if input_path.endswith(".h5ad"):
-    adata = ad.read_h5ad(input_path)
-else:
-    # if it's a directory, assume 10x mtx format
-    filenames = os.listdir(input_path)
-    adatas = [sc.read_10x_mtx(os.path.join(input_path, f)) for f in filenames]
-    adata = adatas[0].concatenate(adatas[1:], batch_key='orig.ident', batch_categories=filenames)
-
-adata.write_h5ad(os.path.join(os.path.dirname(os.path.dirname(input_path)),"processed", "snrna_data.h5ad"))
-
-print(adata)
-print("adata.X type:", type(adata.X))
-print("adata shape:", adata.shape)
+base = os.path.splitext(os.path.basename(str(input_path)))[0]
+snrna_path = Path(input_path).parents[3]
+data_path = Path(input_path).parents[2]
 
 
-# --- Calculate QC metrics ---
+adata = sc.read_10x_mtx(input_path)
+
 adata.var['mt'] = adata.var_names.str.startswith('MT-')
-sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
+adata.var["ribo"] = adata.var_names.str.startswith(("RPS", "RPL"))
+
+sc.pp.calculate_qc_metrics(adata, qc_vars=['mt', "ribo"], percent_top=None, log1p=False, inplace=True)
+sns.displot(adata.obs["total_counts"], bins=100, kde=False).savefig(os.path.join(snrna_path, "plots", "raw", base + "_total_counts_distribution.png"))
+sc.pl.scatter(adata, "total_counts", "n_genes_by_counts", color=["pct_counts_mt", "pct_counts_ribo"], show=False)
+              
+plt.savefig(os.path.join(snrna_path, "plots", "raw", base + "_qc_plots.png"), dpi=300, bbox_inches="tight")
+plt.close()
+
+
+filters = parameters.filters
+adata.uns['filters'] = filters
 
 # --- Subset cells ---
 adata = adata[
-    (adata.obs['n_genes_by_counts'] > 200) &
-    (adata.obs['total_counts'] < 40000) &
-    (adata.obs['pct_counts_mt'] < 5),
+    (adata.obs['n_genes_by_counts'].between(filters['min_counts'], filters['max_counts'])) &
+    (adata.obs['total_counts'] < filters['max_total_counts']) &
+    (adata.obs['pct_counts_mt'] < filters['max_pct_counts_mt']),
     :
 ].copy()
 
-# --- Normalize, find variable genes, scale ---
-sc.pp.normalize_total(adata, target_sum=1e4) #library size normalization
-sc.pp.log1p(adata) #log-transformation
-sc.pp.highly_variable_genes(adata, flavor='seurat') #identify highly variable genes
-#adata = adata[:, adata.var['highly_variable']].copy()
+adata.layers["counts"] = adata.X.copy() #store the unnormalized data in a new layer called "counts" to use later
 
-adata.layers["scale.data"] = adata.X.copy()
+print("Transforming data...")
+
+sc.pp.normalize_total(adata, target_sum=1e4) #library size normalization
+sc.pp.log1p(adata)
+
+adata.raw = adata.copy() #store the unscaled data in the .raw attribute
+
+sc.pp.highly_variable_genes(adata, flavor='seurat_v3', layer="counts", n_top_genes=2000) #Calculate highly variable genes, using the unnormalized counts layer
+
+adata.layers["scale.data"] = adata.X.copy() #store the unnormalized data in a new layer called "scale.data" to use for scaling
 sc.pp.scale(adata, layer="scale.data")
 
+sns.displot(adata.obs["total_counts"], bins=100, kde=False).savefig(os.path.join(snrna_path, "plots", "processed",base + "_total_counts_distribution.png"))
+sc.pl.scatter(adata, "total_counts", "n_genes_by_counts", color=["pct_counts_mt", "pct_counts_ribo"], show=False)
+              
+plt.savefig(os.path.join(snrna_path, "plots", "processed", base + "_qc_plots.png"), dpi=300, bbox_inches="tight")
+plt.close()
 
-# --- Optional: store sparse counts matrix like in Seurat ---
-adata.layers["counts"] = sparse.csr_matrix(adata.raw.X if adata.raw is not None else adata.X)
 
-# --- Save to h5ad (Scanpy format) ---
+adata.X = csr_matrix(adata.X)
 
-base = os.path.splitext(os.path.basename(str(input_path)))[0]
+print("Saving data...")
+adata.write_h5ad(os.path.join(data_path, "processed", "preprocessed",base + ".h5ad"))
 
-adata.write_h5ad(os.path.join(os.path.dirname(os.path.dirname(input_path)), "processed", "snrna_data_filt.h5ad"))
-
-print(os.path.join(os.path.dirname(os.path.dirname(input_path)), "processed","snrna_data_filt.h5ad" ))
+print("Done.")
