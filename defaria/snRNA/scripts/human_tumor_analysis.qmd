@@ -2137,14 +2137,14 @@ library(Azimuth)
 library(tidyverse)
 library(clustree)
 
+###############################important################################
 
-
-healthy_mat <- open_matrix_anndata_hdf5("/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes.h5ad")
-
-write_matrix_dir(
-  mat = healthy_mat,
-  dir = "/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes_counts")
-
+# healthy_mat <- open_matrix_anndata_hdf5("/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes.h5ad")
+# 
+# write_matrix_dir(
+#   mat = healthy_mat,
+#   dir = "/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes_counts")
+############################################################################
 
 healthy_mat <- open_matrix_dir("/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes_counts")
 
@@ -2154,10 +2154,12 @@ metadata <- LoadH5ADobs("/home/sofia/Projects/etmr/defaria/healthy/data/raw/huma
 
 healthy <- CreateSeuratObject(counts = healthy_mat, meta.data = metadata
 )
-healthy <- NormalizeData(healthy)
-healthy <- FindVariableFeatures(healthy, verbose = FALSE)
 
-
+# healthy <- SCTransform(healthy, variable.features.n = 2000, ncells = 3000, conserve.memory = TRUE)
+# # healthy <- NormalizeData(healthy)
+# # healthy <- FindVariableFeatures(healthy, verbose = FALSE)
+# 
+# qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/human_dev_downsampled_nc3kvf2k.qs2", nthreads = 6)
 
 gene_convert <- read.table("/home/sofia/Projects/etmr/defaria/healthy/data/raw/genes.tsv", sep = '\t', header = TRUE)
 
@@ -2167,27 +2169,31 @@ new_names <- gene_names[rownames(healthy)]
 
 rownames(healthy) <- new_names
 
+healthy <- SCTransform(healthy, variable.features.n = 2000, ncells = 5000, conserve.memory = TRUE)
+# healthy <- NormalizeData(healthy)
+# healthy <- FindVariableFeatures(healthy, verbose = FALSE)
 
-healthy <- ScaleData(healthy)
+qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/human_dev_downsampled_nc5kvf2k.qs2", nthreads = 6)
+
+
+#healthy <- ScaleData(healthy)
 
 healthy <- RunPCA(healthy)
 
-
-qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_all_filtered.qs2", nthreads = 6)
-
-
 healthy <- RunUMAP(healthy, reduction = "pca", dims = 1:30, return.model = TRUE, reduction.name = "unintegrated")
 
-######################################neighbors and clusters########################################
+healthy$development_stage_ontology_term_id
+#####################neighbors and clusters#######################################
 
 healthy <- FindNeighbors(healthy, reduction = "pca", dims = 1:30,
                                 graph.name = c("unintegrated_nn", "unintegrated_snn"))
 
-for (r in c(.8, 1, 1.2, 1.5, 1.8, 2)) {
+for (r in c(.6, .8, 1, 1.2, 1.5, 1.8, 2, 2.1)) {
   healthy <- FindClusters(healthy, resolution = r,  algorithm = 4, graph.name = "unintegrated_snn", random.seed=2026)
 } #i'm doing this to have several resolution values for clustree
 
-DimPlot(healthy, reduction = "unintegrated")
+
+qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/human_dev_downsampled_nc5kvf2k", nthreads = 6)
 
 ######################################clustree#######################################################
 
@@ -2195,41 +2201,69 @@ clus_tree_unint <- clustree(healthy, prefix = "unintegrated_snn_res.")
 
 ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/all_clus_tree_unint.png", clus_tree_unint, units = "in", width = 14, height = 14)
 
-healthy$unint_sel_res <- healthy$unintegrated_snn_res.1.8 
+healthy$unint_sel_res <- healthy$unintegrated_snn_res.1 
 
-qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healthy_all_filtered.qs2", nthreads = 6)
-
+######################################clustree#######################################################
 
 sel_res_unint <- DimPlot(healthy, reduction = "unintegrated", group.by = "unint_sel_res", label = TRUE, label.size = 3,
-                         repel = FALSE, raster = FALSE) + NoLegend() + ggtitle("Unintegrated healthy data selected clustering resolution (1.8)")
+                         repel = FALSE, raster = FALSE) + NoLegend() + ggtitle("Unintegrated healthy data selected clustering (resolution 1)")
 
-ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_sel_res_unint.png", sel_res_unint, width = 8, height = 6, units = "in")
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/all_sel_res_unint.png", sel_res_unint, width = 8, height = 6, units = "in")
 
 sel_ct_unint <- DimPlot(healthy, reduction = "unintegrated", group.by = "CellClass", label = TRUE, label.size = 3,
-                         repel = FALSE, raster = FALSE) + NoLegend() + ggtitle("Unintegrated healthy data cell type resolution (1.8)")
+                         repel = FALSE, raster = FALSE) + ggtitle("Unintegrated healthy data cell type (resolution 1)")
 
-ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_sel_ct_unint.png", sel_ct_unint, width = 8, height = 6, units = "in")
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/all_sel_ct_unint.png", sel_ct_unint, width = 8, height = 6, units = "in")
+
+sel_ct_unint_split <- DimPlot(healthy, reduction = "unintegrated", group.by = "CellClass", label = TRUE, label.size = 3,
+                        repel = TRUE, raster = FALSE, split.by = "CellClass") + ggtitle("Unintegrated healthy data cell type (resolution 1)") + NoLegend()
+
+
 
 tumor <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/int_human_tumor_sing.qs2", nthreads = 6)
 
 tumor <- DietSeurat(tumor, 
+                    layers = "counts",
                     dimreducs = NULL, 
                     assays = "RNA")
 
-anchors <-  FindTransferAnchors(reference = healthy, query = tumor, dims = 1:30,
-                                reference.reduction = "pca")
+tumor <- SCTransform(tumor, variable.features.n = 2000, ncells = 5000, conserve.memory = TRUE)
+
+anchors <-  FindTransferAnchors(
+  reference = healthy, 
+  query = tumor,
+  normalization.method = "SCT", 
+  dims = 1:30, 
+  reference.reduction = "pca") #uses variable features from reference by default
 
 unint_ancors <- as.data.frame(anchors@anchors)
 
-write_csv(unint_ancors, )
+write_csv(unint_ancors, "/home/sofia/Projects/etmr/defaria/healthy/all_unint_ancors_sct_bothvf.csv")
 
-anchors@anchor.features
+anchor_cells <- unique(anchors@anchors[, "cell1"])
 
-tumor <- MapQuery(anchorset = anchors, reference = healthy, query = tumor,
-                      refdata = list(Cluster = "unint_sel_res", CellType = "CellClass"), reference.reduction = "pca", reduction.model = "unintegrated")
+reference_filtered <- subset(
+  healthy,
+  cells = anchor_cells
+)
+
+tumor <- MapQuery(
+  anchorset = anchors, reference = healthy, 
+  query = tumor, refdata = list(
+    Cluster = "unint_sel_res", 
+    CellType = "CellClass"), 
+  reference.reduction = "pca", 
+  reduction.model = "unintegrated")
 
 summary(tumor$predicted.Cluster.score)
+
+#Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#0.1789  0.5919  0.7714  0.7507  0.9269  1.0000 
+
 summary(tumor$predicted.CellType.score)
+
+#Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 0.2861  0.7635  0.9461  0.8663  1.0000  1.0000
 
 
 ##############################plot the results####################################
@@ -2246,7 +2280,7 @@ cluster_unint_type <- tumor@meta.data |>
   ) +
   scale_fill_manual(values = c("#fbd960", "#d5b3ff"))
 
-ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_cluster_unint_type.png", cluster_unint_type, units = "in", width = 8, height = 6)
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/all_cluster_unint_type.png", cluster_unint_type, units = "in", width = 8, height = 6)
 
 cluster_unint_score <- tumor@meta.data |>
   group_by(predicted.Cluster) |>
@@ -2257,7 +2291,7 @@ cluster_unint_score <- tumor@meta.data |>
   theme_classic() +
   facet_wrap(vars(predicted.Cluster), scales = "free_y")  
 
-ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_cluster_unint_score.png", cluster_unint_score, units = "in", width = 14, height = 10)
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/all_cluster_unint_score.png", cluster_unint_score, units = "in", width = 14, height = 10)
 
 ############################################################################
 
@@ -2273,7 +2307,7 @@ celltype_unint_type <- tumor@meta.data |>
   ) +
   scale_fill_manual(values = c("#fbd960", "#d5b3ff"))
 
-ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_celltype_unint_type.png", celltype_unint_type, units = "in", width = 8, height = 6)
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/all_celltype_unint_type.png", celltype_unint_type, units = "in", width = 8, height = 6)
 
 celltype_unint_score <- tumor@meta.data |>
   group_by(predicted.CellType) |>
@@ -2284,7 +2318,7 @@ celltype_unint_score <- tumor@meta.data |>
   theme_classic() +
   facet_wrap(vars(predicted.CellType), scales = "free_y")  
 
-ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/celltype_unint_score.png", celltype_unint_score, units = "in", width = 14, height = 10)
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/celltype_unint_score.png", celltype_unint_score, units = "in", width = 14, height = 10)
 
 #################################combined umap################################
 
@@ -2321,7 +2355,7 @@ combined_plot_cond <- LabelClusters(
   id = "Cluster"
 )
 
-ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/all_combined_plot_cond.png", combined_plot_cond, units = "in", width = 8, height = 6)
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/all_combined_plot_cond.png", combined_plot_cond, units = "in", width = 8, height = 6)
 
 combined_plot_ct <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = CellType)) +
   geom_point(size = 1, alpha = 0.8) +
@@ -2339,7 +2373,11 @@ combined_plot_ct <- LabelClusters(
 
 or_celltype <- DimPlot(tumor, group.by = "by_group_celltypes", reduction = "ref.umap")
 
-pred_celltype <- DimPlot(tumor, group.by = "predicted.CellType", reduction = "ref.umap")
+pred_celltype <- DimPlot(tumor, group.by = "predicted.CellType", reduction = "ref.umap", label = TRUE)
+
+combined_celltype_res <- (sel_res_unint | sel_ct_unint | ) / sel_ct_unint_split
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/all_sel_ct_unint.png", sel_ct_unint, width = 8, height = 6, units = "in")
 
 or_celltype + pred_celltype
 
@@ -2763,7 +2801,7 @@ ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/uninte
 ```
 
 |                              |                         |         |                |
-|-----------------------|-------------------|---------------|---------------|
+|---------------------|------------------|-----------------|-----------------|
 | Carnegie stage 15            | \~Week 5 (35 - 38 days) | 5       | HsapDv:0000022 |
 | Carnegie stage 16            | \~Week 6 (37 - 42 days) | 5.5     | HsapDv:0000023 |
 | Carnegie stage 18            | \~Week 7 (44 - 48 days) | 6       | HsapDv:0000025 |
