@@ -1113,7 +1113,6 @@ celltype_colors <-  c("Neurons" = "#822faf",
 "Lymphocytes"        = "#2C6EAA")
 
 
-
 celltype_plot_human <- lapply(by_group, function(x) {
   lapply(
     grep("^celltype_", colnames(x@meta.data), value = TRUE),
@@ -1946,11 +1945,8 @@ GABRG2
 
 FeaturePlot(by_group$C, features = c("GABRG2", "CACNA1G", "GAD2"), order = TRUE)
 
-
 FeaturePlot(by_group$A, features = cellmarkers$Glut, order = TRUE)
 FeaturePlot(by_group$D, features = cellmarkers$Glut, order = TRUE)
-
-
 
 rgc_gaba_a <- FeaturePlot(by_group$A, features = rgc_gaba, order = TRUE)
 
@@ -2002,8 +1998,6 @@ FeaturePlot(integrated_data, features = "etmr_score", order = FALSE, pt.size = 1
         high = "red",
         midpoint = 0
       )
-
-
 
 celltype_colors <-  c("Neurons" = "#822faf",
 "Neurons_immature"   = "#F15A8A",
@@ -2061,13 +2055,11 @@ human_tumor_long |>
              labs(title = "ETMR score by cluster res 1", x = "cluster")
 
 
-
 for (i in names(violin_human_tumor_etmr)) {
   for(j in c(1.2, 1.5, 1.8, 2)) {
    ggsave(paste0("/home/sofia/Projects/etmr/defaria/snRNA/plots/Annotation/ByGroup/violin/etmr", paste0(i, "_",j), ".png"), violin_human_tumor_etmr[[i]][[paste0("mnn_res_",j)]], width = 16, height = 8, units = "in") 
   }
 }
-
 
 
 brain_location <- setNames(c("right fronto-temporal",
@@ -2227,7 +2219,12 @@ tumor <- DietSeurat(tumor,
                     dimreducs = NULL, 
                     assays = "RNA")
 
-tumor <- SCTransform(tumor, variable.features.n = 2000, ncells = 5000, conserve.memory = TRUE)
+tumor <- SCTransform(
+  tumor, 
+  variable.features.n = 2000, 
+  ncells = 5000, 
+  conserve.memory = TRUE
+  )
 
 anchors <-  FindTransferAnchors(
   reference = healthy, 
@@ -2251,7 +2248,8 @@ tumor <- MapQuery(
   anchorset = anchors, reference = healthy, 
   query = tumor, refdata = list(
     Cluster = "unint_sel_res", 
-    CellType = "CellClass"), 
+    CellType = "CellClass",
+    DevStage = "development_stage_ontology_term_id"),
   reference.reduction = "pca", 
   reduction.model = "unintegrated")
 
@@ -2265,6 +2263,10 @@ summary(tumor$predicted.CellType.score)
 #Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 # 0.2861  0.7635  0.9461  0.8663  1.0000  1.0000
 
+summary(tumor$predicted.DevStage.score)
+
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 0.1769  0.5409  0.7290  0.7241  0.9310  1.0000 
 
 ##############################plot the results####################################
 
@@ -2295,8 +2297,6 @@ ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/uninte
 
 ############################################################################
 
-
-
 celltype_unint_type <- tumor@meta.data |>
   ggplot(aes(x = predicted.CellType, fill = Tumor_Type)) +
   geom_bar() +
@@ -2322,14 +2322,54 @@ ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/uninte
 
 #################################combined umap################################
 
+celltype_colors <-  c("Neurons" = "#822faf",
+                      "Neuron" = "#822faf",
+                      "Neurons_immature" = "#F15A8A", 
+                      "Neuroblast" = "#F15A8A",
+                      "Neurons_immature_GABA" = "#fbc1b4", 
+                      "Neurons_immature_Glut" = "#ff90b3",
+                      "IPC" = "#ffd670",
+                      "Neuronal IPC" = "#ffd670",
+                      "NEC-like_RGC" = "#3FAF6B",
+                      "RGC_NEC-like" = "#3FAF6B",
+                      "Neural crest" = "#3FAF6B",
+                      "RGC" = "#8cd867",
+                      "Radial glia" = "#8cd867",
+                      "Pericytes" = "#5ED7C4",
+                      "Fibroblast" = "#5ED7C4",
+                      "Endothelial" = "#2AA7A1",
+                      "Vascular" = "#2AA7A1",
+                      "PC/EC" = "#5ED7C4",
+                      "Astrocytes" = "#72ddf7",
+                      "Glioblast" = "#72ddf7",
+                      "Microglia" = "#AFC7E9",
+                      "Immune" = "#AFC7E9",
+                      "Oligodendrocytes" = "#BFC3C7",
+                      "Oligo" = "#BFC3C7",
+                      "OPC" = "#72ddf7",
+                      "Lymphocytes" = "#2C6EAA")
+
+
 healthy$id <- 'reference'
 tumor$id <- 'query'
 
 healthy_umap <- as.data.frame(Embeddings(healthy, "unintegrated")) |>
-  mutate(Cluster = healthy$unint_sel_res, CellType = healthy$CellClass)
+  mutate(
+    Cluster = healthy$unint_sel_res, 
+    CellType = healthy$CellClass,
+    DevStage = healthy$development_stage_ontology_term_id
+    )
+
 healthy_umap$Condition <- "Healthy"
+
 tumor_umap <- as.data.frame(Embeddings(tumor, "ref.umap")) |>
-  mutate(Cluster = tumor$predicted.Cluster, CellType = tumor$predicted.CellType)
+  mutate(
+    Cluster = tumor$predicted.Cluster, 
+    CellType = tumor$predicted.CellType,
+    DevStage = tumor$predicted.DevStage,
+    OriginalCellType = tumor$by_group_celltypes
+    )
+
 tumor_umap$Condition <- "Tumor"
 
 tumor_umap <- tumor_umap |>
@@ -2338,7 +2378,7 @@ tumor_umap <- tumor_umap |>
 
 combined_umap <- rbind(
   healthy_umap,
-  tumor_umap
+  tumor_umap |> select(-OriginalCellType)
 )
 
 combined_plot_cond <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = Condition)) +
@@ -2364,23 +2404,74 @@ combined_plot_ct <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrat
     x = "umap_1",
     y = "umap_2",
     color = "Cell type"
-  ) + ggtitle("Combined unintegrated healthy and tumor data") + facet_wrap(vars(Condition))
+  ) + 
+  ggtitle("Combined unintegrated healthy and tumor data") + 
+  facet_wrap(vars(Condition)) +
+  scale_color_manual(values = celltype_colors)
 
 combined_plot_ct <- LabelClusters(
   plot = combined_plot_ct,
   id = "Cluster"
 )
 
-or_celltype <- DimPlot(tumor, group.by = "by_group_celltypes", reduction = "ref.umap")
+celltypes_or <- as.character(tumor$by_group_celltypes)
 
-pred_celltype <- DimPlot(tumor, group.by = "predicted.CellType", reduction = "ref.umap", label = TRUE)
+tumor <- AddMetaData(
+  tumor, metadata = ifelse(
+  celltypes_or %in% c(
+    "Neurons_immature_GABA", "Neurons_immature_Glut", "Neurons_immature"
+    ),
+  "Neuroblast",
+  ifelse(
+    celltypes_or %in% c(
+      "Astrocytes", "OPC"
+      ),
+    "Glioblast",
+    ifelse(
+      celltypes_or %in% c(
+        "NEC-like_RGC", "RGC"
+      ),
+      "Radial glia",
+      ifelse(
+        celltypes_or %in% c(
+          "Microglia"
+        ),
+        "Immune",
+    celltypes_or
+  )
+))), 
+  col.name = "ComparableCellType")
 
-combined_celltype_res <- (sel_res_unint | sel_ct_unint | ) / sel_ct_unint_split
 
-ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/all_sel_ct_unint.png", sel_ct_unint, width = 8, height = 6, units = "in")
+or_celltype <- DimPlot(tumor, group.by = "by_group_celltypes", reduction = "ref.umap", label = TRUE, cols = celltype_colors)
 
-or_celltype + pred_celltype
+comp_celltype <- DimPlot(tumor, group.by = "ComparableCellType", reduction = "ref.umap", label = TRUE, cols = celltype_colors)
 
+pred_celltype <- DimPlot(tumor, group.by = "predicted.CellType", reduction = "ref.umap", label = TRUE, label.size = 3, cols = celltype_colors)
+
+combined_plot_split <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = Condition, label = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + ggtitle("Cell type in combined unintegrated healthy and tumor data") +
+  facet_wrap(vars(CellType)) +
+  scale_color_manual(values = c("#b8e0d2", "#f7af9d")) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/combined_plot_split.png", combined_plot_split, width = 12, height = 10, units = "in")
+
+
+combined_celltype <- (combined_plot_cond / sel_ct_unint / pred_celltype) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/combined_celltype.png", combined_celltype, width = 8, height = 18, units = "in")
+
+tumor_celltype <- or_celltype + comp_celltype + pred_celltype
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/tumor_celltype.png", tumor_celltype, width = 8, height = 18, units = "in")
+
+clust_in_tumor <- levels(droplevels(tumor$predicted.Cluster))
 
 filt_combined_plot_cond <- combined_umap |>
   filter(Cluster %in% clust_in_tumor) |> 
@@ -2398,8 +2489,123 @@ filt_combined_plot_cond <- LabelClusters(
   id = "Cluster"
 )
 
-ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/filt_combined_plot_cond.png", filt_combined_plot_cond, units = "in", width = 8, height = 6)
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/filt_combined_plot_cond.png", filt_combined_plot_cond, units = "in", width = 8, height = 6)
 
+####################################histograms##################################
+
+source("~/Projects/etmr/defaria/scripts/functions.R")  
+
+my_colors_healthy <- c(
+  "HsapDv_0000022" = "#b7e4c7", 
+  "HsapDv_0000023" = "#95d5b2", 
+  "HsapDv_0000025" = "#74c69d", 
+  "HsapDv_0000027" = "#52b788", 
+  "HsapDv_0000029" = "#40916c", 
+  "HsapDv_0000046" = "#4ea8de", 
+  "HsapDv_0000047" = "#5390d9",
+  "HsapDv_0000048" = "#6930c3" ,
+  "HsapDv_0000049" = "#7400b8", 
+  "HsapDv_0000050" = "#b5179e", 
+  "HsapDv_0000051" = "#f72585", 
+  "HsapDv_0000052" = "#f467a1"
+  )
+
+my_colors_tumor <- c(
+  "HsapDv_0000022" = "#b7e4c7", 
+  "HsapDv_0000023" = "#95d5b2", 
+  "HsapDv_0000025" = "#74c69d", 
+  "HsapDv_0000027" = "#52b788", 
+  "HsapDv_0000029" = "#40916c", 
+  "HsapDv_0000046" = "#4ea8de", 
+  "HsapDv_0000047" = "#5390d9",
+  "HsapDv_0000049" = "#7400b8", 
+  "HsapDv_0000050" = "#b5179e", 
+  "HsapDv_0000051" = "#f72585", 
+  "HsapDv_0000052" = "#f467a1"
+)
+
+
+devstage_unint <- DimPlot(
+  healthy, 
+  reduction = "unintegrated", 
+  group.by = "development_stage_ontology_term_id", 
+  label = FALSE, 
+  label.size = 3,
+  repel = FALSE, 
+  cols = my_colors_healthy, 
+  raster = FALSE
+) +  
+  ggtitle("Reference developmental stages")
+
+devstage_unint_split <- DimPlot(
+  healthy, 
+  reduction = "unintegrated", 
+  group.by = "development_stage_ontology_term_id", 
+  label = FALSE, 
+  label.size = 3,
+  repel = FALSE, 
+  cols = my_colors_healthy, 
+  raster = FALSE, 
+  split.by = "development_stage_ontology_term_id"
+) +  
+  ggtitle("Reference developmental stages")
+
+devstage_unint_tumor <-  DimPlot(
+  tumor, reduction = "ref.umap", 
+  group.by = "predicted.DevStage", 
+  label = FALSE, 
+  label.size = 3, 
+  repel = FALSE, 
+  cols = my_colors_tumor, 
+  raster = FALSE
+) +  
+  ggtitle("Tumor predicted developmental stages")
+
+devstage_unint_tumor_split <-  DimPlot(
+  tumor, reduction = "ref.umap", 
+  group.by = "predicted.DevStage", 
+  label = FALSE, 
+  label.size = 3, 
+  repel = FALSE, 
+  cols = my_colors_tumor, 
+  raster = FALSE, 
+  split.by = "predicted.DevStage"
+) +  
+  ggtitle("Tumor predicted developmental stages")
+  
+
+devstage_unint_split / devstage_unint_tumor_split
+
+(devstage_unint + devstage_unint_tumor) & patchwork::plot_layout(guides = "collect")
+
+combined_devstage_plot_split <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = Condition, label = Condition)) +
+  geom_point(size = 1, alpha = 0.8) +
+  theme_classic() +
+  labs(
+    x = "umap_1",
+    y = "umap_2",
+    color = "Condition"
+  ) + ggtitle("Developmental stage in combined unintegrated healthy and tumor data") +
+  facet_wrap(vars(DevStage)) +
+  scale_color_manual(values = c("#b8e0d2", "#f7af9d")) 
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/combined_devstage_plot_split.png", combined_devstage_plot_split, width = 12, height = 10, units = "in")
+
+##################################################################################
+
+tumor_predicted_vs_orig_ct <- tumor@meta.data |>
+  ggplot(aes(x = by_group_celltypes, fill = predicted.CellType)) +
+  geom_bar()+
+  scale_fill_manual(values = celltype_colors) +
+  theme_classic() +
+  ggtitle("Cell type predicted from unintegrated healthy data") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/tumor_predicted_vs_orig_ct.png", tumor_predicted_vs_orig_ct, width = 10, height = 8, units = "in")
+
+qs_save(tumor, "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/tumor_lt_all_healthy.qs2", nthreads = 6)
 ```
 
 ```{r}
@@ -2516,37 +2722,36 @@ filt_combined_plot_cond <- LabelClusters(
 
 ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/filt_combined_plot_cond.png", filt_combined_plot_cond, units = "in", width = 8, height = 6)
 
-
 ```
 
-| donor_id | development_stage | Age              | Count |
-|:---------|:------------------|:-----------------|------:|
-| BRC2191  | HsapDv_0000027    | 6.90000009536743 | 84189 |
-| BRC2061  | HsapDv_0000027    | 6.90000009536743 | 43396 |
-| XDD:395  | HsapDv_0000025    | 6                | 42562 |
-| BRC2147  | HsapDv_0000027    | 6.69999980926514 | 38838 |
-| BRC2106A | HsapDv_0000027    | 6.59999990463257 | 34733 |
-| BRC2114  | HsapDv_0000027    | 6.90000009536743 | 34690 |
-| XDD:400  | HsapDv_0000023    | 5.5              | 30196 |
-| XDD:348  | HsapDv_0000022    | 5                | 27701 |
-| XHU:297  | HsapDv_0000048    | 10               | 20737 |
-| BRC2110  | HsapDv_0000027    | 6.90000009536743 | 20188 |
-| BRC2006  | HsapDv_0000046    | 8                | 19358 |
-| XHU:307  | HsapDv_0000047    | 9.19999980926514 | 17191 |
-| XDD:313  | HsapDv_0000046    | 8.5              | 16230 |
-| BRC2073  | HsapDv_0000027    | 6.59999990463257 | 13848 |
-| XDD:334  | HsapDv_0000046    | 8                | 10500 |
-| XHU:305  | HsapDv_0000029    | 7.5              | 10295 |
-| XDD:342  | HsapDv_0000046    | 8.5              |  9447 |
-| XDD:358  | HsapDv_0000049    | 11.5             |  6942 |
-| BRC2057  | HsapDv_0000046    | 8.10000038146973 |  6440 |
-| XDD:398  | HsapDv_0000027    | 7                |  6082 |
-| XHU:292  | HsapDv_0000047    | 9.5              |  5587 |
-| XDD:351  | HsapDv_0000050    | 12               |  5551 |
-| BRC2021  | HsapDv_0000046    | 8                |  4948 |
-| XDD:326  | HsapDv_0000025    | 6                |  4568 |
-| XDD:385  | HsapDv_0000052    | 14               |  3055 |
-| XDD:359  | HsapDv_0000051    | 13               |  2636 |
+| Donor ID | Development Stage |  Age |  Count |
+|:---------|:------------------|:-----|-------:|
+| BRC2191  | HsapDv_0000027    | 6.9  |  84189 |
+| BRC2061  | HsapDv_0000027    | 6.9  |  43396 |
+| XDD:395  | HsapDv_0000025    | 6    |  42562 |
+| BRC2147  | HsapDv_0000027    | 6.7  |  38838 |
+| BRC2106A | HsapDv_0000027    | 6.6  |  34733 |
+| BRC2114  | HsapDv_0000027    | 7    |  34690 |
+| XDD:400  | HsapDv_0000023    | 5.5  |  30196 |
+| XDD:348  | HsapDv_0000022    | 5    |  27701 |
+| XHU:297  | HsapDv_0000048    | 10   |  20737 |
+| BRC2110  | HsapDv_0000027    | 6.9  |  20188 |
+| BRC2006  | HsapDv_0000046    | 8    |  19358 |
+| XHU:307  | HsapDv_0000047    | 9    |  17191 |
+| XDD:313  | HsapDv_0000046    | 8.5  |  16230 |
+| BRC2073  | HsapDv_0000027    | 6.6  |  13848 |
+| XDD:334  | HsapDv_0000046    | 8    |  10500 |
+| XHU:305  | HsapDv_0000029    | 7.5  |  10295 |
+| XDD:342  | HsapDv_0000046    | 8.5  |   9447 |
+| XDD:358  | HsapDv_0000049    | 11.5 |   6942 |
+| BRC2057  | HsapDv_0000046    | 8.1  |   6440 |
+| XDD:398  | HsapDv_0000027    | 7    |   6082 |
+| XHU:292  | HsapDv_0000047    | 9.5  |   5587 |
+| XDD:351  | HsapDv_0000050    | 12   |   5551 |
+| BRC2021  | HsapDv_0000046    | 8    |   4948 |
+| XDD:326  | HsapDv_0000025    | 6    |   4568 |
+| XDD:385  | HsapDv_0000052    | 14   |   3055 |
+| XDD:359  | HsapDv_0000051    | 13   |   2636 |
 
 ### Process sketch
 
