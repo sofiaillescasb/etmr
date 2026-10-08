@@ -2115,6 +2115,29 @@ writeLines(genes, "/home/sofia/Projects/etmr/defaria/snRNA/data/seurat_genes.txt
 
 ## Integrate with healthy RGC
 
+```         
+I downsamples in a way that resulted in 5k cells per donor and a proportional amount of cell types
+
+> table(healthy$CellClass)
+
+ Erythrocyte   Fibroblast    Glioblast       Immune Neural crest 
+         630         1525         9831          575           58 
+  Neuroblast       Neuron Neuronal IPC        Oligo     Placodes 
+       22643        43844         9640          449           75 
+ Radial glia     Vascular 
+       39881          849 
+> table(healthy$donor_id)
+
+ BRC2006  BRC2021  BRC2057  BRC2061  BRC2073 BRC2106A  BRC2110  BRC2114 
+    5000     5000     5000     5000     5000     5000     5000     5000 
+ BRC2147  BRC2191  XDD:313  XDD:326  XDD:334  XDD:342  XDD:348  XDD:351 
+    5000     5000     5000     5000     5000     5000     5000     5000 
+ XDD:358  XDD:359  XDD:385  XDD:395  XDD:398  XDD:400  XHU:292  XHU:297 
+    5000     5000     5000     5000     5000     5000     5000     5000 
+ XHU:305  XHU:307 
+    5000     5000 
+```
+
 ### First use all cell types
 
 I downsampled the entire dataset with downsample.sh
@@ -2226,6 +2249,8 @@ tumor <- SCTransform(
   conserve.memory = TRUE
   )
 
+#this uses pcaproject
+
 anchors <-  FindTransferAnchors(
   reference = healthy, 
   query = tumor,
@@ -2233,16 +2258,16 @@ anchors <-  FindTransferAnchors(
   dims = 1:30, 
   reference.reduction = "pca") #uses variable features from reference by default
 
-unint_ancors <- as.data.frame(anchors@anchors)
 
-write_csv(unint_ancors, "/home/sofia/Projects/etmr/defaria/healthy/all_unint_ancors_sct_bothvf.csv")
 
-anchor_cells <- unique(anchors@anchors[, "cell1"])
+qs_save(anchors, "/home/sofia/Projects/etmr/defaria/healthy/all_unint_ancors_sct_bothvf.qs2")
 
-reference_filtered <- subset(
-  healthy,
-  cells = anchor_cells
-)
+# anchor_cells <- unique(anchors@anchors[, "cell1"])
+# 
+# reference_filtered <- subset(
+#   healthy,
+#   cells = anchor_cells
+# ) not used
 
 tumor <- MapQuery(
   anchorset = anchors, reference = healthy, 
@@ -2574,9 +2599,10 @@ devstage_unint_tumor_split <-  DimPlot(
   ggtitle("Tumor predicted developmental stages")
   
 
-devstage_unint_split / devstage_unint_tumor_split
+devstage_split_plot <- (devstage_unint_split + NoLegend()) / (devstage_unint_tumor_split + NoLegend()) 
 
-(devstage_unint + devstage_unint_tumor) & patchwork::plot_layout(guides = "collect")
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/devstage_split_plot.png", devstage_split_plot, width = 18, height = 8, units = "in")
+
 
 combined_devstage_plot_split <- ggplot(combined_umap, aes(x = unintegrated_1, y = unintegrated_2, color = Condition, label = Condition)) +
   geom_point(size = 1, alpha = 0.8) +
@@ -2606,6 +2632,403 @@ tumor_predicted_vs_orig_ct <- tumor@meta.data |>
 ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/tumor_predicted_vs_orig_ct.png", tumor_predicted_vs_orig_ct, width = 10, height = 8, units = "in")
 
 qs_save(tumor, "/home/sofia/Projects/etmr/defaria/snRNA/data/processed/tumor_lt_all_healthy.qs2", nthreads = 6)
+
+###############################etmr score####################################
+
+signt_etmr <- read.csv("/home/sofia/Projects/etmr/defaria/snRNA/tables/signature.csv")
+
+
+signt_etmr <- as.list(signt_etmr)
+signt_etmr$Positive <- signt_etmr$Positive[signt_etmr$Positive %in% Features(healthy)]
+signt_etmr$Negative <- signt_etmr$Negative[signt_etmr$Negative %in% Features(healthy)]
+
+#########filter healthy to only keep clusters that are similar to tumor###########
+
+for (x in names(signt_etmr)) {
+  healthy <- AddModuleScore(
+    healthy,
+    features = signt_etmr[x],
+    name = x
+  )
+}
+
+healthy@meta.data <- healthy@meta.data |> 
+  mutate(etmr_score = Positive1 - Negative1) |>
+  select(-c(Positive1, Negative1))
+
+Idents(healthy) <- "unint_sel_res"
+
+qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/human_dev_downsampled_nc5kvf2k", nthreads = 6)
+
+###############################################################################
+
+library(qs2)
+library(Seurat)
+library(tidyverse)
+
+healthy <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/data/processed/human_dev_downsampled_nc5kvf2k", nthreads = 6)
+
+tumor <- qs_read("/home/sofia/Projects/etmr/defaria/snRNA/data/processed/tumor_lt_all_healthy.qs2", nthreads = 6)
+
+
+etmr_scale <- scale_color_gradient2(
+  low = "blue",
+  mid = "lightyellow",
+  high = "red",
+  midpoint = 0,
+  limits = c(-0.4, 0.5),
+  breaks = c(-0.4, -0.2, 0, 0.2, 0.4),
+  oob = scales::squish
+)
+
+FeaturePlot(healthy, features = "etmr_score", order = TRUE, reduction = "unintegrated", raster = FALSE) + etmr_scale
+
+summary(healthy$etmr_score)
+summary(tumor$etmr_score)
+
+#################################all prediction scores############################
+
+pred_scores <- GetAssayData(tumor, assay = "prediction.score.Cluster")
+
+pred_scores_cluster <- as.data.frame(pred_scores) |>
+  rownames_to_column("Cluster") |>
+  arrange(as.factor(as.numeric(Cluster)))
+
+qs_save(pred_scores_cluster, "/home/sofia/Projects/etmr/defaria/snRNA/tables/pred_scores_cluster.qs2", nthreads = 6)
+
+pred_scores_ct <- GetAssayData(tumor, assay = "prediction.score.CellType")
+
+pred_scores_ct <- as.data.frame(pred_scores_ct) |>
+  rownames_to_column("CellType") 
+
+qs_save(pred_scores_ct, "/home/sofia/Projects/etmr/defaria/snRNA/tables/pred_scores_ct.qs2", nthreads = 6)
+
+###################################################################################
+
+library(RANN)
+
+# 1. Grab pre-computed embeddings
+ref_coords   <- Embeddings(healthy, reduction = "pca")[, 1:30]
+query_coords <- Embeddings(tumor, reduction = "ref.pca")[, 1:30]
+
+
+nn <- RANN::nn2(
+  data = ref_coords,
+  query = query_coords,
+  k = 1
+)
+
+#low score == moer similar
+tumor$ref_distance <- nn$nn.dists[, 1]
+
+FeaturePlot(tumor, "ref_distance", order = TRUE)
+
+#so higher score == more similar
+tumor$ref_similarity <- 1 / (1 + tumor$ref_distance)
+
+FeaturePlot(tumor, "ref_similarity")
+
+############################# combine etmr score ################################
+
+raw_module_score <- tumor$etmr_score
+
+min_max_norm <- function(x) { (x - min(x)) / (max(x) - min(x)) }
+norm_module_score <- min_max_norm(raw_module_score)
+ref_similarity_score <- tumor$ref_similarity
+
+w <- 0.5
+tumor$combined_score <- (w * norm_module_score) + ((1 - w) * ref_similarity_score)
+tumor$combined_score_multi <- norm_module_score * ref_similarity_score
+
+
+
+tumor@meta.data |>
+  mutate(predicted.Cluster = as.factor(as.numeric(predicted.Cluster))) |>
+  group_by(predicted.CellType, predicted.Cluster) |>
+  filter(n() > 2) |>
+  ggplot(
+    aes(
+      x = predicted.Cluster, 
+      y = combined_score_multi, 
+      fill = predicted.Cluster
+      )
+    ) +
+  geom_violin() +
+  facet_wrap(
+    vars(predicted.CellType), 
+    scales = "free_x",
+    ncol = 4) +
+  NoLegend()
+  
+  
+summary(nn$nn.dists)
+
+tumor@meta.data |>
+  mutate(predicted.Cluster = as.factor(as.numeric(predicted.Cluster))) |>
+  group_by(predicted.Cluster) |>
+  filter(n() > 2) |>
+  ggplot(
+    aes(
+      x = predicted.Cluster, 
+      y = min_max_norm(etmr_score), 
+      fill = predicted.Cluster
+    )
+  ) +
+  geom_violin() +
+  NoLegend()
+
+tumor@meta.data |>
+  mutate(predicted.Cluster = as.factor(as.numeric(predicted.Cluster))) |>
+  group_by(predicted.Cluster) |>
+  filter(n() > 2) |>
+  ggplot(
+    aes(
+      x = predicted.Cluster, 
+      y = etmr_score, 
+      fill = predicted.Cluster
+    )
+  ) +
+  geom_violin() +
+  NoLegend()
+
+#Does it make more sense to use MappingScore with the original clusters?
+
+unint_ancors <- qs_read("/home/sofia/Projects/etmr/defaria/healthy/all_unint_ancors_sct_bothvf.qs2")
+
+tumor[["mapping.score"]] <- MappingScore(unint_ancors, ndim = 30)
+
+FeaturePlot(tumor, features = "mapping.score", order = TRUE)
+
+# Min-Max normalization to standard 0-1 range
+min_max_scale <- function(x) { (x - min(x)) / (max(x) - min(x)) }
+
+tumor$etmr_score_norm    <- min_max_scale(tumor$etmr_score)
+tumor$mapping_score_norm <- min_max_scale(tumor$mapping.score)
+
+# Composite metric
+tumor$combined_score <- tumor$etmr_score_norm * tumor$mapping_score_norm
+
+mp_score_vln <- tumor@meta.data |>
+  ggplot(
+    aes(
+      x = RNA_snn_res.1.8, 
+      y = mapping_score_norm, 
+      fill = RNA_snn_res.1.8,
+      color = RNA_snn_res.1.8
+    )
+  ) +
+  geom_violin(alpha = .6) +
+  geom_jitter(size = .5) +
+  theme_classic() +
+  NoLegend()
+
+etmr_score_vln <- tumor@meta.data |>
+  ggplot(
+    aes(
+      x = RNA_snn_res.1.8, 
+      y = etmr_score_norm, 
+      fill = RNA_snn_res.1.8,
+      color = RNA_snn_res.1.8
+    )
+  ) +
+  geom_violin(alpha = .6) +
+  geom_jitter(size = .5) +
+  theme_classic() +
+  NoLegend()
+
+combined_score_vln <- tumor@meta.data |>
+  ggplot(
+    aes(
+      x = RNA_snn_res.1.8, 
+      y = combined_score, 
+      fill = RNA_snn_res.1.8,
+      color = RNA_snn_res.1.8
+    )
+  ) +
+  geom_violin(alpha = .6) +
+  geom_jitter(size = .5) +
+  theme_classic() +
+  NoLegend()
+
+(mp_score_vln | etmr_score_vln) / combined_score_vln
+
+Idents(tumor) <- "RNA_snn_res.1.8"
+
+#make real annotation column 
+
+scores_plot <- FeaturePlot(
+  tumor, 
+  features = c(
+    "mapping_score_norm", 
+    "etmr_score_norm", 
+    "combined_score"
+    ), 
+  order = TRUE, 
+  label = TRUE, 
+  repel = TRUE,
+  ncol = 3) 
+
+DimPlot(tumor, label = TRUE, repel = TRUE)
+
+scores_plot <- scores_plot & 
+  scale_color_gradient2(
+  low = "#7400b8",
+  mid = "#4ea8de",
+  high = "#80ffdb",
+  midpoint = 0.5,
+  oob = scales::squish
+)
+
+ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/unintegrated/sct/scores_plot.png", scores_plot, width = 10, height = 8, units = "in")
+
+scores_plot & DimPlot(tumor, label = TRUE, repel = TRUE)
+
+FeaturePlot(
+  subset(tumor, subset = predicted.Cluster %in% c(1,2,3,4,5)), 
+  features = c(
+    "combined_score"
+  ), 
+  order = TRUE, 
+  label = TRUE, 
+  repel = TRUE, split.by = "predicted.Cluster") & scale_color_gradient2(
+    low = "#7400b8",
+    mid = "#4ea8de",
+    high = "#80ffdb",
+    midpoint = 0.5,
+    oob = scales::squish
+  )
+
+
+
+
+
+
+source("~/Projects/etmr/defaria/scripts/functions.R") 
+
+plot_hist(
+  tumor@meta.data, 
+  "predicted.Cluster", 
+  "RNA_snn_res.1",
+  "RNA_snn_res.1"
+  )
+
+plot_hist(
+  tumor@meta.data, 
+  "predicted.Cluster", 
+  "RNA_snn_res.1.8",
+  "RNA_snn_res.1.8"
+)
+
+plot_hist(
+  tumor@meta.data, 
+  "predicted.Cluster", 
+  "by_group_celltypes")
+
+tumor@meta.data %>%
+  group_by(predicted.Cluster) %>%
+  summarise(
+    across(
+      where(is.numeric),
+      list(
+        Min. = ~ min(.x, na.rm = TRUE),
+        `1st Qu.` = ~ quantile(.x, 0.25, na.rm = TRUE),
+        Median = ~ median(.x, na.rm = TRUE),
+        Mean = ~ mean(.x, na.rm = TRUE),
+        `3rd Qu.` = ~ quantile(.x, 0.75, na.rm = TRUE),
+        Max. = ~ max(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    ),
+    .groups = "drop"
+  )
+
+pred_clus_sum_com <- tumor@meta.data |>
+  group_by(predicted.Cluster) |>
+  summarise(
+    Min. = min(combined_score, na.rm = TRUE),
+    `1st Qu.` = quantile(combined_score, 0.25, na.rm = TRUE),
+    Median = median(combined_score, na.rm = TRUE),
+    Mean = mean(combined_score, na.rm = TRUE),
+    `3rd Qu.` = quantile(combined_score, 0.75, na.rm = TRUE),
+    Max. = max(combined_score, na.rm = TRUE),
+    .groups = "drop"
+  ) 
+
+org_clus_sum_com <- tumor@meta.data |>
+  group_by(RNA_snn_res.1) |>
+  summarise(
+    Min. = min(combined_score, na.rm = TRUE),
+    `1st Qu.` = quantile(combined_score, 0.25, na.rm = TRUE),
+    Median = median(combined_score, na.rm = TRUE),
+    Mean = mean(combined_score, na.rm = TRUE),
+    `3rd Qu.` = quantile(combined_score, 0.75, na.rm = TRUE),
+    Max. = max(combined_score, na.rm = TRUE),
+    .groups = "drop"
+  ) 
+
+View(pred_clus_sum_com)
+View(org_clus_sum_com)
+
+##################################################################################
+
+# Query tree built on query_coords, searched using ref_coords
+nn_res <- RANN::nn2(
+  data  = query_coords, 
+  query = ref_coords,   
+  k     = 20
+)
+
+# Mean distance across top 20 query neighbors for every reference cell
+mean_dists <- rowMeans(nn_res$nn.dists)
+
+# Convert to continuous similarity kernel (1 = identical, 0 = far away)
+sigma <- median(mean_dists)
+healthy$similarity_score <- exp(- (mean_dists^2) / (2 * sigma^2))
+
+# Check distribution (will span smoothly across 0–1 without 75% zeros)
+summary(healthy$similarity_score)
+
+DimPlot(healthy_filtered, reduction = "unintegrated", label = TRUE) + NoLegend()
+DimPlot(tumor, reduction = "ref.umap", label = TRUE, group.by = "predicted.Cluster") + NoLegend()
+
+
+summary(healthy$similarity_score)
+
+FeaturePlot(healthy, 
+            features = "similarity_score", 
+            reduction = "unintegrated", 
+            order = TRUE,
+            raster = FALSE)
+
+ref_similarity_score <- healthy$similarity_score
+norm_module_score <- min_max_norm(healthy$etmr_score)
+
+healthy$combined_score_multi <- norm_module_score * ref_similarity_score
+
+healthy@meta.data |>
+  mutate(unint_sel_res = as.factor(as.numeric(unint_sel_res))) |>
+  group_by(CellClass, unint_sel_res) |>
+  filter(n() > 2) |>
+  ggplot(
+    aes(
+      x = unint_sel_res, 
+      y = combined_score_multi, 
+      fill = unint_sel_res
+    )
+  ) +
+  geom_violin() +
+  facet_wrap(
+    vars(CellClass), 
+    scales = "free_x",
+    ncol = 4) +
+  NoLegend()
+
+
+healthy@meta.data |>
+  group_by(unint_sel_res, CellClass) |>
+  reframe(summary(combined_score_multi))
+  
+
 ```
 
 ```{r}
@@ -2656,7 +3079,13 @@ qs_save(healthy, "/home/sofia/Projects/etmr/defaria/healthy/data/processed/healt
 
 healthy@meta.data |>
   select(donor_id, development_stage_ontology_term_id, Age) |>
-  summarise(.by=c(donor_id, development_stage_ontology_term_id, Age), Count = n()) |>
+  summarise(
+    .by=c(
+      donor_id, 
+      development_stage_ontology_term_id, 
+      Age
+      ), 
+    Count = n()) |>
   arrange(desc(Count))
 
 healthy_sketch <- DietSeurat(
@@ -2724,34 +3153,34 @@ ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/uninte
 
 ```
 
-| Donor ID | Development Stage |  Age |  Count |
-|:---------|:------------------|:-----|-------:|
-| BRC2191  | HsapDv_0000027    | 6.9  |  84189 |
-| BRC2061  | HsapDv_0000027    | 6.9  |  43396 |
-| XDD:395  | HsapDv_0000025    | 6    |  42562 |
-| BRC2147  | HsapDv_0000027    | 6.7  |  38838 |
-| BRC2106A | HsapDv_0000027    | 6.6  |  34733 |
-| BRC2114  | HsapDv_0000027    | 7    |  34690 |
-| XDD:400  | HsapDv_0000023    | 5.5  |  30196 |
-| XDD:348  | HsapDv_0000022    | 5    |  27701 |
-| XHU:297  | HsapDv_0000048    | 10   |  20737 |
-| BRC2110  | HsapDv_0000027    | 6.9  |  20188 |
-| BRC2006  | HsapDv_0000046    | 8    |  19358 |
-| XHU:307  | HsapDv_0000047    | 9    |  17191 |
-| XDD:313  | HsapDv_0000046    | 8.5  |  16230 |
-| BRC2073  | HsapDv_0000027    | 6.6  |  13848 |
-| XDD:334  | HsapDv_0000046    | 8    |  10500 |
-| XHU:305  | HsapDv_0000029    | 7.5  |  10295 |
-| XDD:342  | HsapDv_0000046    | 8.5  |   9447 |
-| XDD:358  | HsapDv_0000049    | 11.5 |   6942 |
-| BRC2057  | HsapDv_0000046    | 8.1  |   6440 |
-| XDD:398  | HsapDv_0000027    | 7    |   6082 |
-| XHU:292  | HsapDv_0000047    | 9.5  |   5587 |
-| XDD:351  | HsapDv_0000050    | 12   |   5551 |
-| BRC2021  | HsapDv_0000046    | 8    |   4948 |
-| XDD:326  | HsapDv_0000025    | 6    |   4568 |
-| XDD:385  | HsapDv_0000052    | 14   |   3055 |
-| XDD:359  | HsapDv_0000051    | 13   |   2636 |
+| Donor ID | Development Stage | Age  | Count |
+|:---------|:------------------|:-----|------:|
+| BRC2191  | HsapDv_0000027    | 6.9  | 84189 |
+| BRC2061  | HsapDv_0000027    | 6.9  | 43396 |
+| XDD:395  | HsapDv_0000025    | 6    | 42562 |
+| BRC2147  | HsapDv_0000027    | 6.7  | 38838 |
+| BRC2106A | HsapDv_0000027    | 6.6  | 34733 |
+| BRC2114  | HsapDv_0000027    | 7    | 34690 |
+| XDD:400  | HsapDv_0000023    | 5.5  | 30196 |
+| XDD:348  | HsapDv_0000022    | 5    | 27701 |
+| XHU:297  | HsapDv_0000048    | 10   | 20737 |
+| BRC2110  | HsapDv_0000027    | 6.9  | 20188 |
+| BRC2006  | HsapDv_0000046    | 8    | 19358 |
+| XHU:307  | HsapDv_0000047    | 9    | 17191 |
+| XDD:313  | HsapDv_0000046    | 8.5  | 16230 |
+| BRC2073  | HsapDv_0000027    | 6.6  | 13848 |
+| XDD:334  | HsapDv_0000046    | 8    | 10500 |
+| XHU:305  | HsapDv_0000029    | 7.5  | 10295 |
+| XDD:342  | HsapDv_0000046    | 8.5  |  9447 |
+| XDD:358  | HsapDv_0000049    | 11.5 |  6942 |
+| BRC2057  | HsapDv_0000046    | 8.1  |  6440 |
+| XDD:398  | HsapDv_0000027    | 7    |  6082 |
+| XHU:292  | HsapDv_0000047    | 9.5  |  5587 |
+| XDD:351  | HsapDv_0000050    | 12   |  5551 |
+| BRC2021  | HsapDv_0000046    | 8    |  4948 |
+| XDD:326  | HsapDv_0000025    | 6    |  4568 |
+| XDD:385  | HsapDv_0000052    | 14   |  3055 |
+| XDD:359  | HsapDv_0000051    | 13   |  2636 |
 
 ### Process sketch
 
@@ -3006,7 +3435,7 @@ ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/uninte
 ```
 
 |                              |                         |         |                |
-|---------------------|------------------|-----------------|-----------------|
+|--------------------|------------------|------------------|------------------|
 | Carnegie stage 15            | \~Week 5 (35 - 38 days) | 5       | HsapDv:0000022 |
 | Carnegie stage 16            | \~Week 6 (37 - 42 days) | 5.5     | HsapDv:0000023 |
 | Carnegie stage 18            | \~Week 7 (44 - 48 days) | 6       | HsapDv:0000025 |
