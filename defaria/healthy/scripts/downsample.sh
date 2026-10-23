@@ -60,7 +60,6 @@ keep = np.asarray(keep, dtype=np.int64)
 print(f"Input cells: {adata.n_obs:,}")
 print(f"Selected cells: {len(keep):,}")
 
-# This is the important part:
 # subset the backed AnnData and write directly.
 adata[keep].write(
     output_file,
