@@ -1,14 +1,14 @@
 python - <<'PY'
 import scanpy as sc
 
-src = "/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled.h5ad"
-dst = "/home/sofia/Projects/etmr/defaria/healthy/data/raw/human_dev_downsampled_seurat_genes.h5ad"
+src = /home/sofia/Projects/etmr/defaria/healthy/data/raw"/radial_glia.h5ad"
+dst = "radial_glia_seurat_genes.h5ad"
 
 # Read only metadata initially
 adata = sc.read_h5ad(src, backed="r")
 
 # Genes from the Seurat object
-with open("/home/sofia/Projects/etmr/defaria/snRNA/data/seurat_genes.txt") as f:
+with open("seurat_genes.txt") as f:
     genes = [x.strip() for x in f if x.strip()]
 
 # Match against the H5AD's Gene column

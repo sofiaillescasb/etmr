@@ -14,8 +14,15 @@ a = sc.read_h5ad(input_file, backed="r")
 
 with open(output_file, "w") as f:
     f.write("Ensembl_ID\tGene\n")
-    for ensembl, gene in a.var["Gene"].items():
-        f.write(f"{ensembl}\t{gene}\n")
+    
+    # Check if a 'Gene' column exists in var
+    if "Gene" in a.var.columns:
+        for ensembl, gene in a.var["Gene"].items():
+            f.write(f"{ensembl}\t{gene}\n")
+    else:
+    # Fallback: if genes are just in the index
+        for gene in a.var.index:
+            f.write(f"{gene}\t{gene}\n")
 
 print(f"Extracted {a.n_vars} genes to {output_file}")
 a.file.close()

@@ -9,6 +9,21 @@ tumor <- DietSeurat(tumor,
                     layers = "counts",
                     dimreducs = NULL, 
                     assays = "RNA")
+age <- c(
+  "GSM8058157" = 31.2, 
+  "GSM8058158" = 12, 
+  "GSM8058159" = 30, 
+  "GSM8058160" = 29, 
+  "GSM8058161" = 12, 
+  "GSM8058162" = 35, 
+  "GSM8058163" = 48, 
+  "GSM8058164" = 34, 
+  "GSM8058165"= 39.6)
+
+Idents(tumor) <- "orig.ident"
+
+tumor@meta.data["Age"]  <- age[Idents(tumor)]
+
 #to avoid potential batch effect i'm doing this by sample
 tumor[["RNA"]] <- split(tumor[["RNA"]], f = tumor$orig.ident)
 
@@ -206,7 +221,7 @@ signt_etmr$Negative <- signt_etmr$Negative[signt_etmr$Negative %in% Features(hea
 #########filter healthy to only keep clusters that are similar to tumor###########
 
 for (x in names(signt_etmr)) {
-  healthy_small <- AddModuleScore(
+  healthy_small <- AddModuleScor1e(
     healthy_small,
     features = signt_etmr[x],
     name = x
