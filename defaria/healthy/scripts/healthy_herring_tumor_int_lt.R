@@ -98,16 +98,9 @@ age <- c(
 
     DimPlot(tumor, group.by = "predicted.celltype", split.by = "predicted.stage_id", label = TRUE)
 
-tumor@meta.data |>
-  group_by(predicted.celltype) |>
-  ggplot(aes(x = ))
-summary(tumor$predicted.celltype.score)
 
 tumor_healthy@meta.data["Age"]  <- age[Idents(tumor_rgc)]
 
-ifelse(
-
-  tumor_rgc@meta.data["Age"]  <- age[Idents(tumor_rgc)])
 
 DimPlot(
   tumor_healthy, 

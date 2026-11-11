@@ -9,9 +9,15 @@ LayerData(tumor, assay = "RNA", layer = "counts") <- LayerData(tumor, assay = "R
 
 tumor <- RunUMAP(tumor, reduction = "X_pca", dims = 1:30)
 
-DimPlot(tumor, reduction = "umap", group.by = "predicted_labels") |
+kim_raw_predictions <- DimPlot(tumor, reduction = "umap", group.by = "predicted_labels") |
   DimPlot(subset(tumor, subset = conf_score > .5), reduction = "umap", group.by = "predicted_labels") |
     DimPlot(tumor, reduction = "umap", group.by = "by_group_celltypes")
+
+ggsave("/media/sofia/TOSHIBA EXT/developing_human_brain/kim_raw_predictions.png", 
+       kim_raw_predictions,
+       units="in",
+       width = 21,
+       height = 6)
 
 celltype_clus <- c(
   "C0" = "Oligo OPALIN SEPHS1P6",
@@ -202,42 +208,35 @@ DimPlot(tumor, reduction = "umap", group.by = "celltype_dev_loc", label = TRUE) 
 
 Idents(tumor) <- "predicted_celltype_group"
 
-DimPlot(
-  subset(tumor, subset = conf_score > .7), 
+
+kim_model_gen <- DimPlot(tumor,
   reduction = "umap", 
-  split.by = "predicted_celltype_clus_gen")
+  group.by = "predicted_celltype_clus_gen", label = TRUE)
+
+library(tidyverse)
+
+ggsave("/media/sofia/TOSHIBA EXT/developing_human_brain/kim_model_gen.png", 
+       kim_model_gen,
+       units="in",
+       width = 8,
+       height = 6)
+
 
 Idents(tumor) <- "predicted_celltype_clus_gen"
 
-DimPlot(
-  subset(tumor, subset = conf_score > .5),
+dev_loc_clus_gen_umap <- DimPlot(tumor,
   reduction = "umap", 
   split.by = "celltype_dev_loc",
   group.by = "predicted_celltype_clus_gen",
-  label = TRUE
+  label = TRUE,
+  shuffle = TRUE
   ) +
   NoLegend()
 
+ggsave("/media/sofia/TOSHIBA EXT/developing_human_brain/dev_loc_clus_gen_umap.png", 
+       dev_loc_clus_gen_umap,
+       units="in",
+       width = 30,
+       height = 6)
 
-DimPlot(
-  subset(tumor, subset = conf_score > .5 & predicted_celltype_clus_gen == "Neuroblast"),
-  reduction = "umap", 
-  split.by = "predicted_celltype_clus",
-  label = TRUE
-) +
-  NoLegend()
-
-DimPlot(
-  subset(tumor, subset = conf_score > .5 & predicted_celltype_group == "Excitatory"),
-  reduction = "umap", 
-  group.by = "predicted_celltype_clus",
-  label = TRUE
-) 
-
-DimPlot(
-  subset(tumor, subset = conf_score > .5 & predicted_celltype_group == "Inhibitory"),
-  reduction = "umap", 
-  split.by = "predicted_celltype_clus",
-  label = TRUE
-) +
-  NoLegend()
+qs_save(tumor, "/media/sofia/TOSHIBA EXT/developing_human_brain/tumor_annotated_seurat.qs2", nthreads = 6)
