@@ -7,7 +7,7 @@ library(data.table)
 library(qs2)
 library(Azimuth)
 library(reticulate)
-
+library(dplyr)
 
 
 #Read Braun
@@ -40,7 +40,8 @@ braun <- CreateSeuratObject(
 braun[["RNA"]] <- split(braun[["RNA"]], f = braun$donor_id)
 
 braun_cortex <- subset(braun, subset = Subregion == "Cortex")
-
+braun_cortex$sex <- braun_cortex$sex_ontology_term_id
+braun_cortex$postbirth_age <- NA
 #Read Herring
 herr_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/GSE168408/"
 
@@ -125,6 +126,37 @@ herr_metadata <- read.csv(
   "/media/sofia/TOSHIBA EXT/developing_human_brain/GSE168408/Processed_data_RNA-all_BCs-meta-data.csv"
 )
 
+sel_cols <- c("X", "batch",                     
+              "RL.", "age",                      
+              "chem", "concat_id",                
+              "numerical_age", "stage_id",                  
+              "Sex", "Race",                      
+              "PMI", "Brain.Regions.",            
+              "Cause.of.Death", "ICD.10.Code",               
+              "ICD.10.category", "Oxygen.No.Oxygen",          
+              "Date.of.Collection", "Collection_year",           
+              "Library.Prep.Date", "Library.Prep.Lot",          
+              "n_genes_by_counts", "log1p_n_genes_by_counts",   
+              "total_counts", "log1p_total_counts",        
+              "doublet_score", "log10_gene_counts",        
+              "log10_UMI_counts", "percent_mito",              
+              "percent_ribo", "n_counts",                  
+              "leiden", "mat.dev",                   
+              "cell_type", "major_clust",               
+              "sub_clust", "combined.leiden")
+
+herr_metadata <- herr_metadata |>
+  select(all_of(sel_cols))
+
+rownames(herr_metadata) <- sub("^([^-]+)-([^_]+)_.*$", "\\2_\\1-1", herr_metadata$X)
+
+herr <- AddMetaData(herr, metadata = herr_metadata)
+
+cells_in_common <- intersect(herr$X, herr_metadata$X)
+
+herr <- subset(herr, subset = X %in% cells_in_common)
+
+
 
 #Read Cameron 
 #https://www.sciencedirect.com/science/article/pii/S0006322322014044
@@ -160,7 +192,40 @@ metadata <- fread("/media/sofia/TOSHIBA EXT/developing_human_brain/cameron_2022/
 
 cam <- AddMetaData(cam, metadata = as.data.frame(metadata))
 
+cam$sex <- "F"
+cam$region <- "frontal cortex"
+cam$age <- "14-15ga"
+cam$postbirth_age <- NA
 #Harmonize metadata colnames
 
+colnames(braun_cortex@meta.data)
+colnames(herr@meta.data)
+colnames(cam@meta.data)
+
+merge
+
+# I need donor_id, celltype, sex, region, UMIs, feature counts, age, percent_mt, percent_ribo, dev_stage, batch
+
+donor <- c(braun_cortex$donor_id,
+           herr$sample,
+           cam$sample)
+sex <- c(braun_cortex$sex,
+         herr$Sex,
+         cam$sex)
+counts <- c(braun_cortex$nCount_RNA,
+            herr$nCount_RNA,
+            cam$nCount_RNA)
+features <- c(braun_cortex$nFeature_RNA,
+              herr$nFeature_RNA,
+              cam$nFeature_RNA)
+region <- c(droplevels(braun_cortex$dissection),
+            herr$Brain.Regions.,
+            cam$region)
+gestational_age <- c(droplevels(braun_cortex$Age),
+                     ifelse(grepl("ga", herr$age), herr$age, NA),
+                     cam$age)
+postbirth_age <- c(braun_cortex$postbirth_age,
+                  ifelse(grepl("yr|d", herr$age), herr$age, NA),
+                  cam$postbirth_age)
 
 #Merge 
