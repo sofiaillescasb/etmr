@@ -42,6 +42,10 @@ braun[["RNA"]] <- split(braun[["RNA"]], f = braun$donor_id)
 braun_cortex <- subset(braun, subset = Subregion == "Cortex")
 braun_cortex$sex <- braun_cortex$sex_ontology_term_id
 braun_cortex$postbirth_age <- NA
+braun_cortex$dev_stage <- "Fetal"
+braun_cortex$dataset <- "Braun"
+
+
 #Read Herring
 herr_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/GSE168408/"
 
@@ -155,8 +159,7 @@ herr <- AddMetaData(herr, metadata = herr_metadata)
 cells_in_common <- intersect(herr$X, herr_metadata$X)
 
 herr <- subset(herr, subset = X %in% cells_in_common)
-
-
+herr$dataset <- "Herring"
 
 #Read Cameron 
 #https://www.sciencedirect.com/science/article/pii/S0006322322014044
@@ -196,36 +199,147 @@ cam$sex <- "F"
 cam$region <- "frontal cortex"
 cam$age <- "14-15ga"
 cam$postbirth_age <- NA
+cam$dev_stage <- "Fetal"
+cam$dataset <- "Cameron"
 #Harmonize metadata colnames
 
 colnames(braun_cortex@meta.data)
 colnames(herr@meta.data)
 colnames(cam@meta.data)
 
-merge
 
-# I need donor_id, celltype, sex, region, UMIs, feature counts, age, percent_mt, percent_ribo, dev_stage, batch
+# I need donor_id, celltype, sex, region, UMIs, feature counts, age, dev_stage
 
-donor <- c(braun_cortex$donor_id,
+donor <- as.factor(c(as.character(braun_cortex$donor_id),
            herr$sample,
-           cam$sample)
-sex <- c(braun_cortex$sex,
+           cam$sample))
+sex <- as.factor(c(as.character(braun_cortex$sex),
          herr$Sex,
-         cam$sex)
+         cam$sex))
 counts <- c(braun_cortex$nCount_RNA,
             herr$nCount_RNA,
             cam$nCount_RNA)
 features <- c(braun_cortex$nFeature_RNA,
               herr$nFeature_RNA,
               cam$nFeature_RNA)
-region <- c(droplevels(braun_cortex$dissection),
+region <- as.factor(c(as.character(droplevels(braun_cortex$dissection)),
             herr$Brain.Regions.,
-            cam$region)
+            cam$region))
 gestational_age <- c(droplevels(braun_cortex$Age),
                      ifelse(grepl("ga", herr$age), herr$age, NA),
                      cam$age)
 postbirth_age <- c(braun_cortex$postbirth_age,
                   ifelse(grepl("yr|d", herr$age), herr$age, NA),
                   cam$postbirth_age)
+dev_stage <- as.factor(c(as.character(braun_cortex$dev_stage),
+               herr$stage_id,
+               cam$dev_stage))
+celltype <- as.factor(c(as.character(braun_cortex$CellClass),
+              ifelse(
+                grepl(
+                  "IN|PN", 
+                  herr$cell_type
+                  ), 
+                paste(
+                  herr$cell_type, 
+                  herr$major_clust, 
+                  sep="_"
+                  ),
+                herr$major_clust),
+              gsub("FC-", "", ifelse(
+                grepl(
+                  "InN", 
+                  cam$cellIDs), 
+                paste(
+                  "IN", 
+                  cam$cellIDs, 
+                  sep = "-"
+                  ), 
+                ifelse(
+                  grepl(
+                    "ExN", 
+                    cam$cellIDs
+                    ), 
+                  paste("PN", cam$cellIDs, sep = "-"),
+                  cam$cellIDs)))))
+dataset <- c(braun_cortex$dataset,
+             herr$dataset,
+             cam$dataset) 
+
+metadata_joined <- data.frame(
+  "id" = donor, 
+  "dataset" = dataset,
+  "sex" = sex,
+  "nCount_RNA" = counts,
+  "nFeature_RNA" = features,
+  "region" = region,
+  "gestational_age" = gestational_age,
+  "postbirth_age" = postbirth_age,
+  "dev_stage" = dev_stage,
+  "celltype" = celltype)
+
+#percent_mt, percent_ribo i'll reprocess
 
 #Merge 
+
+og_rownames <- rownames(braun_cortex)
+new_rownames <- setNames(gene_meta$Gene, gene_meta$Accession)
+# 3. Use the named vector to replace them instantly (unmatched IDs keep their original name)
+new_names <- new_rownames[og_rownames]
+new_names[is.na(new_names)] <- og_rownames[is.na(new_names)] # Keep old ID if no symbol found
+
+# 4. Assign back
+rownames(braun_cortex) <- new_names
+
+
+         
+library(org.Hs.eg.db)
+
+# Get current Ensembl IDs (remove version numbers if present, e.g., .1, .2)
+herr_ensembl_ids <- rownames(herr)
+
+# Map to gene symbols
+herr_gene_symbols <- mapIds(org.Hs.eg.db,
+                       keys = herr_ensembl_ids,
+                       column = "SYMBOL",
+                       keytype = "ENSEMBL",
+                       multiVals = "first")
+
+meta_lookup <- gene_meta |>
+  mutate(clean_key = sub("\\.[0-9]+", "", Accession),
+         clean_key = sub("_PAR_[XY]", "", clean_key)) |>
+  filter(!is.na(Gene)) |>
+  distinct(clean_key, .keep_all = TRUE)
+
+# Turn it into a named vector (Name = clean Ensembl ID, Value = Gene Symbol)
+symbol_dict <- setNames(meta_lookup$Gene, meta_lookup$clean_key)
+
+# 2. Clean your matrix row names directly 
+raw_names <- rownames(herr)
+clean_keys <- sub("\\.[0-9]+", "", raw_names)
+clean_keys <- sub("_PAR_[XY]", "", clean_keys)
+
+# 3. Look up symbols; if none found, keep the original name
+mapped_names <- symbol_dict[clean_keys]
+final_names <- coalesce(mapped_names, raw_names)
+
+rownames(herr) <- make.unique(final_names)
+
+merged_reference <- list(braun_cortex, herr, cam)
+  
+
+merged_reference <- merge(
+  x = merged_reference[[1]],
+  y = merged_reference[-1],
+  project = "Healthy_reference",
+  merge.data = FALSE
+)
+
+merged_reference@meta.data <- metadata_joined
+
+merged_reference <- JoinLayers(merged_reference)
+
+merged_reference[["RNA"]] <- split(merged_reference[["RNA"]], f = merged_reference$id)
+
+qs_save(merged_reference, "/media/sofia/TOSHIBA EXT/developing_human_brain/merged_reference.qs2", nthreads = 7)
+
