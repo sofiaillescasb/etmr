@@ -3540,7 +3540,7 @@ ggsave("/home/sofia/Projects/etmr/defaria/healthy/plots/transfered_labels/uninte
 ```
 
 |                              |                         |         |                |
-|-----------------------|-------------------|---------------|---------------|
+|------------------------------|-------------------------|---------|----------------|
 | Carnegie stage 15            | \~Week 5 (35 - 38 days) | 5       | HsapDv:0000022 |
 | Carnegie stage 16            | \~Week 6 (37 - 42 days) | 5.5     | HsapDv:0000023 |
 | Carnegie stage 18            | \~Week 7 (44 - 48 days) | 6       | HsapDv:0000025 |

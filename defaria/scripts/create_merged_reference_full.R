@@ -8,45 +8,20 @@ library(qs2)
 library(Azimuth)
 library(reticulate)
 library(dplyr)
+library(data.table)
+library(Matrix)
+library(qs2)
+
+#Read data
+cam <- qs_read("/media/sofia/TOSHIBA EXT/developing_human_brain/cameron_2022/data/cam.qs2", nthreads = 6)
+#maybe the others should be kept on disk????
+braun <- qs_read("/media/sofia/TOSHIBA EXT/developing_human_brain/cameron_2022/data/braun.qs2", nthreads = 6)
+herr <- qs_read("/media/sofia/TOSHIBA EXT/developing_human_brain/cameron_2022/data/herr.qs2", nthreads = 6)
 
 
-#Read Braun
-braun_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/braun/human_dev.h5ad"
-
-braun_mat <- open_matrix_anndata_hdf5(braun_path)
-
-mat_counts <- convert_matrix_type(braun_mat, type = "uint32")
-
-# Write to a compressed binary folder on disk
-write_matrix_dir(mat = mat_counts, dir = "/media/sofia/TOSHIBA EXT/developing_human_brain/braun/braun_human_counts")
-
-
-#Need to read metadata and gene symbols
-# This is the only way I think this can be done on disk, 
-# because reticulate converts pandas dataframes into number codes with levels as categories
-
-ad <- import("anndata")
-
-adata <- ad$read_h5ad("human_dev.h5ad", backed = "r")
-
-cell_meta <- py_to_r(adata$obs)
-gene_meta <- py_to_r(adata$var)
-
-braun <- CreateSeuratObject(
-  counts = mat_counts,
-  meta.data = cell_meta,
-  project = "Braun")
-
-braun[["RNA"]] <- split(braun[["RNA"]], f = braun$donor_id)
-
-braun_cortex <- subset(braun, subset = Subregion == "Cortex")
-braun_cortex$sex <- braun_cortex$sex_ontology_term_id
-braun_cortex$postbirth_age <- NA
-braun_cortex$dev_stage <- "Fetal"
-braun_cortex$dataset <- "Braun"
-
-
+##########################################################################################################
 #Read Herring
+
 herr_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/GSE168408/"
 
 herr_files <-c("RL1612_filtered_feature_bc_matrix.h5",
@@ -71,7 +46,6 @@ for (i in seq_along(herr_files)) {
 }
 
 data.list <- c()
-
 
 for (i in 1:length(herr_files)) {
   path <- paste0(herr_path, herr_files[i])
@@ -149,10 +123,13 @@ sel_cols <- c("X", "batch",
               "cell_type", "major_clust",               
               "sub_clust", "combined.leiden")
 
-herr_metadata <- herr_metadata |>
-  select(all_of(sel_cols))
 
-rownames(herr_metadata) <- sub("^([^-]+)-([^_]+)_.*$", "\\2_\\1-1", herr_metadata$X)
+herr_metadata <- herr_metadata |>
+  tibble::column_to_rownames("X") |>
+  select(all_of(sel_cols)) |>
+  filter(RL. %in% unique(herr@meta.data$orig.ident))
+
+rownames(herr_metadata) <- sub("^([^-]+)-([^_]+)_.*$", "\\2_\\1-1", rownames(herr_metadata))
 
 herr <- AddMetaData(herr, metadata = herr_metadata)
 
@@ -161,39 +138,8 @@ cells_in_common <- intersect(herr$X, herr_metadata$X)
 herr <- subset(herr, subset = X %in% cells_in_common)
 herr$dataset <- "Herring"
 
-#Read Cameron 
-#https://www.sciencedirect.com/science/article/pii/S0006322322014044
-#FC is frontal lobal
-gz_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/cameron_2022/cameron_2022_snRNAseq_FC_raw_count_gEX_matrix.txt.gz"
+############################################## Cameron ###########################################################
 
-# #unzip file
-# gunzip(gz_path, remove = FALSE, overwrite = TRUE)
-
-txt_path <- sub("\\.gz$", "", gz_path)
-
-#load the uncompressed count table efficiently
-counts_dt <- fread(txt_path)
-
-
-# Convert the first column (gene symbols/IDs) to row names
-gene_names <- counts_dt[[1]]
-count_matrix <- as.matrix(counts_dt[, -1, with = FALSE])
-rownames(count_matrix) <- gene_names
-
-# 3 karyotypically normal human fetuses from the second trimester of gestation (2 of 14 and 1 of 15 postconception weeks, all female).
-
-
-# Initialize the Seurat object with raw counts
-cam <- CreateSeuratObject(
-  counts = count_matrix, 
-  project = "Prenatal"
-)
-
-# Read metadata
-metadata <- fread("/media/sofia/TOSHIBA EXT/developing_human_brain/cameron_2022/cameron_2022_snRNAseq_FC_metadata.txt.gz")
-
-
-cam <- AddMetaData(cam, metadata = as.data.frame(metadata))
 
 cam$sex <- "F"
 cam$region <- "frontal cortex"
@@ -201,40 +147,45 @@ cam$age <- "14-15ga"
 cam$postbirth_age <- NA
 cam$dev_stage <- "Fetal"
 cam$dataset <- "Cameron"
+
+###################################################################################################################
+
+
+
 #Harmonize metadata colnames
 
-colnames(braun_cortex@meta.data)
+colnames(braun@meta.data)
 colnames(herr@meta.data)
 colnames(cam@meta.data)
 
 
 # I need donor_id, celltype, sex, region, UMIs, feature counts, age, dev_stage
 
-donor <- as.factor(c(as.character(braun_cortex$donor_id),
+donor <- as.factor(c(as.character(braun$donor_id),
            herr$sample,
            cam$sample))
-sex <- as.factor(c(as.character(braun_cortex$sex),
+sex <- as.factor(c(as.character(braun$sex),
          herr$Sex,
          cam$sex))
-counts <- c(braun_cortex$nCount_RNA,
+counts <- c(braun$nCount_RNA,
             herr$nCount_RNA,
             cam$nCount_RNA)
-features <- c(braun_cortex$nFeature_RNA,
+features <- c(braun$nFeature_RNA,
               herr$nFeature_RNA,
               cam$nFeature_RNA)
-region <- as.factor(c(as.character(droplevels(braun_cortex$dissection)),
+region <- as.factor(c(as.character(droplevels(braun$dissection)),
             herr$Brain.Regions.,
             cam$region))
-gestational_age <- c(droplevels(braun_cortex$Age),
+gestational_age <- c(droplevels(braun$Age),
                      ifelse(grepl("ga", herr$age), herr$age, NA),
                      cam$age)
-postbirth_age <- c(braun_cortex$postbirth_age,
+postbirth_age <- c(braun$postbirth_age,
                   ifelse(grepl("yr|d", herr$age), herr$age, NA),
                   cam$postbirth_age)
-dev_stage <- as.factor(c(as.character(braun_cortex$dev_stage),
+dev_stage <- as.factor(c(as.character(braun$dev_stage),
                herr$stage_id,
                cam$dev_stage))
-celltype <- as.factor(c(as.character(braun_cortex$CellClass),
+celltype <- as.factor(c(as.character(braun$CellClass),
               ifelse(
                 grepl(
                   "IN|PN", 
@@ -262,7 +213,7 @@ celltype <- as.factor(c(as.character(braun_cortex$CellClass),
                     ), 
                   paste("PN", cam$cellIDs, sep = "-"),
                   cam$cellIDs)))))
-dataset <- c(braun_cortex$dataset,
+dataset <- c(braun$dataset,
              herr$dataset,
              cam$dataset) 
 
@@ -282,14 +233,6 @@ metadata_joined <- data.frame(
 
 #Merge 
 
-og_rownames <- rownames(braun_cortex)
-new_rownames <- setNames(gene_meta$Gene, gene_meta$Accession)
-# 3. Use the named vector to replace them instantly (unmatched IDs keep their original name)
-new_names <- new_rownames[og_rownames]
-new_names[is.na(new_names)] <- og_rownames[is.na(new_names)] # Keep old ID if no symbol found
-
-# 4. Assign back
-rownames(braun_cortex) <- new_names
 
 
          
@@ -325,7 +268,7 @@ final_names <- coalesce(mapped_names, raw_names)
 
 rownames(herr) <- make.unique(final_names)
 
-merged_reference <- list(braun_cortex, herr, cam)
+merged_reference <- list(braun, herr, cam)
   
 
 merged_reference <- merge(
@@ -335,11 +278,82 @@ merged_reference <- merge(
   merge.data = FALSE
 )
 
+merged_reference[["percent.mt"]] <- PercentageFeatureSet(merged_reference, pattern = "^MT-")
+
+merged_reference <- subset(
+  merged_reference,
+  subset = nFeature_RNA > 250 &
+    nFeature_RNA < 9000 &
+    nCount_RNA < 75000 &
+    percent.mt < 15
+)
+
+
 merged_reference@meta.data <- metadata_joined
 
 merged_reference <- JoinLayers(merged_reference)
 
 merged_reference[["RNA"]] <- split(merged_reference[["RNA"]], f = merged_reference$id)
+
+
+# Erythrocyte    Fibroblast     Glioblast     
+# Immune         Neuroblast     Neural crest  
+# Neuron         Neuronal IPC   Oligo         
+# Radial glia    Vascular       PN_L4_RORB    
+# PN_L2-3_CUX2   IN_SST         Astro         
+# PN_L5-6_TLE4   PN_L5-6_THEMIS IN_VIP        
+# OPC            IN_PV          IN_PV_SCUBE3  
+# IN_ID2         IN_LAMP5_NOS1  Micro         
+# Vas            IN_MGE_dev     Poor-Quality  
+# PN_PN_dev      IN_CGE_dev     IN-InN-2      
+# IP             RG-1           PN-ExN-1      
+# PN-ExN-4       IN-InN-1       PN-ExN-3      
+# IN-InN-3       RG-2           N-undef       
+# PN-ExN-5       PN-ExN-2       CycPro        
+# IN-InN-4       Endo           MG   
+
+
+merged_reference$harmonized_cell_type <- recode(
+  merged_reference$cell_type,
+  "Radial glia"       = "Radial Glia",
+  "RG-1"                = "Radial Glia",
+  "RG-2" = "Radial Glia",
+  
+  "Excitatory_Neurons" = "Excitatory Neurons",
+  "PN-ExN-1"            = "Excitatory Neurons",
+  "PN-ExN-2"            = "Excitatory Neurons",
+  "PN-ExN-3"            = "Excitatory Neurons",
+  "PN-ExN-4"            = "Excitatory Neurons",
+  "PN-ExN-5"            = "Excitatory Neurons",
+  "PN_L2-3_CUX2"            = "Excitatory Neurons",
+  "PN_L4_RORB"            = "Excitatory Neurons",
+  "PN_L5-6_TLE4"            = "Excitatory Neurons",
+  "PN_L5-6_TLE4"            = "Excitatory Neurons",
+  
+  "IN_SST"       = "Inhibitory Neurons",
+  "IN_ID2"       = "Inhibitory Neurons",
+  "IN-InN-1"       = "Inhibitory Neurons",
+  "IN-InN-2"       = "Inhibitory Neurons",
+  "IN-InN-3"       = "Inhibitory Neurons",
+  "IN-InN-4"       = "Inhibitory Neurons",
+  "IN_PV"          = "Inhibitory Neurons",
+  "IN_LAMP5_NOS1"       = "Inhibitory Neurons",
+  "IN_VIP"       = "Inhibitory Neurons",
+  "IN_PV_SCUBE3"          = "Inhibitory Neurons",
+  
+  "Astro" = "Astrocytes",
+  
+  "Oligo" = "Oligodendrocytes",
+  
+  "MG" = "Microglia",
+  "Micro" = "Microglia",
+  "Immune" = "Microglia",
+  
+  "Neuronal IPC" = "IP",
+  "CycPro" = "IP",
+)
+
+
 
 qs_save(merged_reference, "/media/sofia/TOSHIBA EXT/developing_human_brain/merged_reference.qs2", nthreads = 7)
 
