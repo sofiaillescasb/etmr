@@ -10,12 +10,10 @@ library(qs2)
 library(Azimuth)
 library(reticulate)
 library(dplyr)
-library(data.table)
 library(Matrix)
-library(qs2)
 
 #Read Braun
-braun_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/braun/human_dev.h5ad"
+braun_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/braun/data/human_dev.h5ad"
 
 braun_mat <- open_matrix_anndata_hdf5(braun_path)
 
