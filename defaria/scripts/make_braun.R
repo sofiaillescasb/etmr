@@ -1,5 +1,3 @@
-Sys.setenv(HDF5_USE_FILE_LOCKING = "FALSE")
-
 library(BPCells)
 library(Seurat)
 library(SeuratObject)
@@ -13,7 +11,7 @@ library(dplyr)
 library(Matrix)
 
 #Read Braun
-braun_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/braun/data/human_dev.h5ad"
+braun_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/braun/human_dev.h5ad"
 
 braun_mat <- open_matrix_anndata_hdf5(braun_path)
 
@@ -47,14 +45,4 @@ braun$postbirth_age <- NA_real_
 braun$dev_stage <- "Fetal"
 braun$dataset <- "Braun"
 
-#convert names
-og_rownames <- rownames(braun)
-new_rownames <- setNames(gene_meta$Gene, gene_meta$Accession)
-# unmatched IDs keep their original name
-new_names <- new_rownames[og_rownames]
-new_names[is.na(new_names)] <- og_rownames[is.na(new_names)] # Keep old ID if no symbol found
-
-
-rownames(braun) <- new_names
-
-qs_save(braun, "/media/sofia/TOSHIBA EXT/developing_human_brain/cameron_2022/data/braun.qs2", nthreads = 6)
+qs_save(braun, "/media/sofia/TOSHIBA EXT/developing_human_brain/braun/braun.qs2", nthreads = 6)

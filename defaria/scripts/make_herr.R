@@ -11,7 +11,7 @@ library(SeuratObject)
 library(SeuratDisk)
 
 
-herr_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/GSE168408/"
+herr_path <- "/media/sofia/TOSHIBA EXT/developing_human_brain/herring_2022/"
 
 herr_files <-c("RL1612_filtered_feature_bc_matrix.h5",
                "RL1613_filtered_feature_bc_matrix.h5",
@@ -60,27 +60,15 @@ names(data.list) <- c("RL1612",
                       "RL2129")
 
 herr_seurat <- lapply(names(data.list), function(sample_name) {
-  
-  mat <- data.list[[sample_name]]
-  
   obj <- CreateSeuratObject(
-    counts = mat,
+    counts = data.list[[sample_name]],
     project = sample_name,
     min.cells = 0,
     min.features = 0
   )
-  
   obj$sample <- sample_name
-  
-  obj <- RenameCells(
-    obj,
-    add.cell.id = sample_name
-  )
-  
-  obj
+  RenameCells(obj, add.cell.id = sample_name)
 })
-
-names(herr_seurat) <- names(data.list)
 
 herr <- merge(
   x = herr_seurat[[1]],
@@ -88,70 +76,46 @@ herr <- merge(
   project = "herr",
   merge.data = FALSE
 )
-
 herr <- JoinLayers(herr)
 
+# 2. Load reference metadata & align cell barcodes first
 ad <- import("anndata")
-
-#note: human_dev was filtered to singlets-only
 adata <- ad$read_h5ad(
-  "/media/sofia/TOSHIBA EXT/developing_human_brain/GSE168408/Processed_data_RNA-all_full-counts-and-downsampled-CPM.h5ad", 
+  "/media/sofia/TOSHIBA EXT/developing_human_brain/herring_2022/Processed_data_RNA-all_full-counts-and-downsampled-CPM.h5ad",
   backed = "r"
-  )
+)
 
 cell_meta <- py_to_r(adata$obs)
 colnames(cell_meta) <- make.names(colnames(cell_meta))
 gene_meta <- py_to_r(adata$var)
 
-sel_cols <- c("batch",                     
-              "RL.", "age",                      
-              "chem", "concat_id",                
-              "numerical_age", "stage_id",                  
-              "Sex", "Race",                      
-              "PMI", "Brain.Regions.",            
-              "Cause.of.Death", "ICD.10.Code",               
-              "ICD.10.category", "Oxygen.No.Oxygen",          
-              "Date.of.Collection", "Collection_year",           
-              "Library.Prep.Date", "Library.Prep.Lot",          
-              "n_genes_by_counts", "log1p_n_genes_by_counts",   
-              "total_counts", "log1p_total_counts",        
-              "doublet_score", "log10_gene_counts",        
-              "log10_UMI_counts", "percent_mito",              
-              "percent_ribo", "n_counts",                  
-              "leiden", "mat.dev",                   
-              "cell_type", "major_clust",               
-              "sub_clust", "combined.leiden")
-
+sel_cols <- c(
+  "batch", "RL.", "age", "chem", "concat_id", "numerical_age", "stage_id",
+  "Sex", "Race", "PMI", "Brain.Regions.", "Cause.of.Death", "ICD.10.Code",
+  "ICD.10.category", "Oxygen.No.Oxygen", "Date.of.Collection", "Collection_year",
+  "Library.Prep.Date", "Library.Prep.Lot", "n_genes_by_counts",
+  "log1p_n_genes_by_counts", "total_counts", "log1p_total_counts",
+  "doublet_score", "log10_gene_counts", "log10_UMI_counts", "percent_mito",
+  "percent_ribo", "n_counts", "leiden", "mat.dev", "cell_type",
+  "major_clust", "sub_clust", "combined.leiden"
+)
 
 cell_meta <- cell_meta |>
-  select(all_of(sel_cols)) |>
-  filter(RL. %in% unique(herr@meta.data$orig.ident))
+  dplyr::select(dplyr::all_of(sel_cols)) |>
+  dplyr::filter(RL. %in% unique(herr$orig.ident))
 
 rownames(cell_meta) <- sub("^([^-]+)-([^_]+)_.*$", "\\2_\\1-1", rownames(cell_meta))
 
-expr <- GetAssayData(herr, assay = "RNA", layer = "counts")
-n_cells <- Matrix::rowSums(expr > 0)
-
-summary(subset(herr, cells =  cells_in_common)$doublet_score)
-
-herr <- AddMetaData(herr, metadata = cell_meta)
-
+# Match cells BEFORE subsetting or summarizing metadata
 cells_in_common <- intersect(colnames(herr), rownames(cell_meta))
+message("Matched cells: ", length(cells_in_common), " of ", ncol(herr))
 
 herr <- subset(herr, cells = cells_in_common)
+herr <- AddMetaData(herr, metadata = cell_meta[cells_in_common, , drop = FALSE])
 herr$dataset <- "Herring"
 
-og_rownames <- rownames(herr)
-
-idx <- match(og_rownames, gene_meta$gene_ids)
-
-new_names <- rownames(gene_meta)[idx]
-
-# Keep original names for unmatched IDs
-new_names[is.na(idx)] <- og_rownames[is.na(idx)]
 
 
-rownames(herr) <- new_names
+qs_save(herr, "/media/sofia/TOSHIBA EXT/developing_human_brain/herring_2022/herr.qs2", nthreads = 6)
 
-qs_save(herr, "/media/sofia/TOSHIBA EXT/developing_human_brain/data/herr.qs2", nthreads = 6)
 
